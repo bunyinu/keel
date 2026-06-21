@@ -34,7 +34,9 @@ pub struct Decision {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
 pub struct KeelState {
+    #[serde(default = "default_version")]
     pub version: u32,
     pub goal: Option<Goal>,
     #[serde(default)]
@@ -50,7 +52,7 @@ pub struct KeelState {
 impl Default for KeelState {
     fn default() -> Self {
         Self {
-            version: 1,
+            version: default_version(),
             goal: None,
             progress: Progress::default(),
             decisions: vec![],
@@ -60,6 +62,10 @@ impl Default for KeelState {
             updated_at: None,
         }
     }
+}
+
+fn default_version() -> u32 {
+    1
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

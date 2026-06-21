@@ -15,7 +15,37 @@ Keel keeps task context in your repository — not in a chat transcript — so a
 
 Hooks fire on every tool call. Speed matters.
 
-## Install
+## Keel Cloud (hosted)
+
+**Live:** https://keel-cloud.onrender.com
+
+### As a normal user (no build tools)
+
+1. Open **https://keel-cloud.onrender.com**
+2. Enter a project name → **Create project**
+3. Copy your **API key** (shown once)
+4. In your repo:
+
+```bash
+npm install -g @keel-agent/cli
+keel cloud link --url https://keel-cloud.onrender.com --project YOUR_PROJECT_ID --key YOUR_API_KEY
+keel init
+keel goal set "My task" --accept "tests pass"
+```
+
+5. Use Claude Code or Codex — state syncs to the cloud automatically.
+
+View your snapshot anytime at `https://keel-cloud.onrender.com/dashboard/YOUR_PROJECT_ID`
+
+### Cloud CLI commands
+
+```bash
+keel cloud link --url URL --project ID --key KEY
+keel cloud push    # upload local .keel/ to cloud
+keel cloud pull    # download from cloud
+```
+
+## Install (local CLI)
 
 ### npm (recommended — same pattern as Codex)
 
