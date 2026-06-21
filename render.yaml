@@ -7,6 +7,10 @@ services:
     healthCheckPath: /health
     envVars:
       - key: KEEL_DB_PATH
-        value: /tmp/keel.db
+        value: /data/keel.db
       - key: RUST_LOG
         value: info
+    disk:
+      name: keel-data
+      mountPath: /data
+      sizeGB: 1
