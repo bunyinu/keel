@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Keel — Agent state that survives compaction</title>
+  <style>
+    :root {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0b0f14;
+      color: #e8eef7;
+      line-height: 1.5;
+    }
+    body { max-width: 720px; margin: 0 auto; padding: 2.5rem 1.25rem; }
+    h1 { font-size: 1.75rem; font-weight: 600; margin: 0 0 .5rem; }
+    .tagline { color: #8fa3bf; margin-bottom: 2rem; }
+    label { display: block; font-size: .85rem; color: #8fa3bf; margin-bottom: .35rem; }
+    input {
+      width: 100%; box-sizing: border-box; padding: .65rem .75rem;
+      border: 1px solid #2a3548; border-radius: 8px; background: #141c28; color: #e8eef7;
+      font-size: 1rem; margin-bottom: 1rem;
+    }
+    button {
+      background: #3d7eff; color: #fff; border: none; border-radius: 8px;
+      padding: .7rem 1.25rem; font-size: 1rem; cursor: pointer; font-weight: 500;
+    }
+    button:hover { background: #2f6ae8; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .result { display: none; margin-top: 2rem; }
+    .result.show { display: block; }
+    .card {
+      background: #141c28; border: 1px solid #2a3548; border-radius: 10px;
+      padding: 1.25rem; margin-top: 1rem;
+    }
+    pre {
+      background: #0b0f14; padding: 1rem; border-radius: 8px; overflow-x: auto;
+      font-size: .85rem; white-space: pre-wrap; word-break: break-all;
+    }
+    .warn { color: #f0b429; font-size: .9rem; margin-top: .5rem; }
+    .steps { margin-top: 2rem; color: #8fa3bf; font-size: .95rem; }
+    .steps ol { padding-left: 1.25rem; }
+    .steps li { margin: .5rem 0; }
+    code { background: #1e2a3d; padding: .1rem .35rem; border-radius: 4px; font-size: .9em; }
+  </style>
+</head>
+<body>
+  <h1>Keel</h1>
+  <p class="tagline">Agent state for Claude Code &amp; Codex — survives compaction, works across tools.</p>
+
+  <label for="name">Project name</label>
+  <input id="name" type="text" placeholder="my-app" autocomplete="off" />
+  <button id="create">Create project</button>
+
+  <div id="result" class="result">
+    <div class="card">
+      <strong>Save your API key now</strong>
+      <p class="warn">Shown once. Store it somewhere safe.</p>
+      <pre id="api-key"></pre>
+      <p>Project ID: <code id="project-id"></code></p>
+    </div>
+    <div class="card">
+      <strong>Connect your machine</strong>
+      <pre id="commands"></pre>
+    </div>
+    <p><a id="dashboard-link" href="#">Open dashboard →</a></p>
+  </div>
+
+  <div class="steps">
+    <strong>How it works</strong>
+    <ol>
+      <li>Create a project above — get an API key</li>
+      <li>Install CLI: <code>npm install -g @keel-agent/cli</code></li>
+      <li>Link repo: <code>keel cloud link</code> then <code>keel init</code></li>
+      <li>Use Claude Code or Codex — state syncs automatically</li>
+    </ol>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    $("create").onclick = async () => {
+      const name = $("name").value.trim();
+      if (!name) return alert("Enter a project name");
+      $("create").disabled = true;
+      try {
+        const res = await fetch("/api/projects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        const base = location.origin;
+        $("api-key").textContent = data.api_key;
+        $("project-id").textContent = data.id;
+        $("commands").textContent =
+          `npm install -g @keel-agent/cli\n` +
+          `keel cloud link --url ${base} --project ${data.id} --key ${data.api_key}\n` +
+          `cd your-repo && keel init`;
+        $("dashboard-link").href = data.dashboard_url;
+        $("result").classList.add("show");
+        localStorage.setItem("keel_project", JSON.stringify({ id: data.id, key: data.api_key, url: base }));
+      } catch (e) {
+        alert("Failed: " + e.message);
+      } finally {
+        $("create").disabled = false;
+      }
+    };
+    const saved = localStorage.getItem("keel_project");
+    if (saved) {
+      try {
+        const p = JSON.parse(saved);
+        $("name").value = p.name || "";
+        $("project-id").textContent = p.id;
+        $("api-key").textContent = p.key;
+        $("commands").textContent =
+          `keel cloud link --url ${p.url} --project ${p.id} --key ${p.key}`;
+        $("dashboard-link").href = `/dashboard/${p.id}`;
+        $("result").classList.add("show");
+      } catch (_) {}
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "keel-agent",
+  "private": true,
+  "description": "Keel monorepo — Rust CLI + npm distribution",
+  "scripts": {
+    "test": "cargo test --all-targets",
+    "build": "cargo build --release",
+    "stage": "./scripts/stage-npm.sh",
+    "release": "./scripts/release.sh",
+    "install:global": "./scripts/release.sh --install-global",
+    "verify:shim": "node npm/keel-cli/scripts/verify-shim.js"
+  }
+}

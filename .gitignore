@@ -1,0 +1,12 @@
+# Keel
+.keel/*.tmp
+target/
+Cargo.lock
+
+# Staged native binaries (built by scripts/stage-npm.sh)
+npm/platforms/*/bin/keel
+npm/keel-cli/vendor/keel
+
+# Legacy
+__pycache__/
+*.py[cod]

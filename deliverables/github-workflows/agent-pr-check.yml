@@ -1,0 +1,76 @@
+# Agent PR Check — install as .github/workflows/agent-pr-check.yml
+# Flags agent-assisted PRs and runs basic safety checks.
+
+name: Agent PR Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+jobs:
+  agent-check:
+    runs-on: ubuntu-latest
+    # Run on all PRs, or only when labeled agent-assisted:
+    # if: contains(github.event.pull_request.labels.*.name, 'agent-assisted')
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect agent-assisted PR
+        id: detect
+        run: |
+          LABELS="${{ join(github.event.pull_request.labels.*.name, ',') }}"
+          BODY="${{ github.event.pull_request.body }}"
+          if echo "$LABELS" | grep -qi 'agent-assisted'; then
+            echo "agent=true" >> "$GITHUB_OUTPUT"
+          elif echo "$BODY" | grep -qiE 'agent|claude code|codex|ai-assisted'; then
+            echo "agent=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::PR looks agent-assisted but missing label. Add label: agent-assisted"
+          else
+            echo "agent=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check for secrets in diff
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          DIFF=$(git diff origin/${{ github.base_ref }}...HEAD)
+          if echo "$DIFF" | grep -qiE '(api[_-]?key|secret|password|private[_-]?key|AKIA[0-9A-Z]{16})'; then
+            echo "::error::Possible secret in diff. Remove before merge."
+            exit 1
+          fi
+          echo "No obvious secrets in diff."
+
+      - name: Diff size warning
+        run: |
+          FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | wc -l)
+          LINES=$(git diff --stat origin/${{ github.base_ref }}...HEAD | tail -1)
+          echo "Changed files: $FILES"
+          echo "$LINES"
+          if [ "$FILES" -gt 30 ]; then
+            echo "::warning::Large agent PR ($FILES files). Extra review recommended."
+          fi
+
+      - name: Comment summary
+        if: steps.detect.outputs.agent == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = `### Agent PR Check ✅
+
+            This PR is flagged as agent-assisted.
+
+            **Before merge:**
+            - [ ] Human reviewed every changed file
+            - [ ] CI passing
+            - [ ] No secrets in diff
+            - [ ] Matches ticket scope
+
+            _Automated by Agent PR Check_`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body
+            });

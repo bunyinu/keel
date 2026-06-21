@@ -1,0 +1,12 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: keel-cloud
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: KEEL_DB_PATH
+        value: /tmp/keel.db
+      - key: RUST_LOG
+        value: info

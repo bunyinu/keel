@@ -1,0 +1,33 @@
+{
+  "name": "@keel-agent/cli",
+  "version": "0.2.0",
+  "description": "Repo-local agent state for Claude Code and Codex",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/keel-agent/keel.git"
+  },
+  "keywords": [
+    "claude-code",
+    "codex",
+    "ai-agent",
+    "hooks",
+    "mcp"
+  ],
+  "bin": {
+    "keel": "./bin/keel.js"
+  },
+  "files": [
+    "bin",
+    "scripts"
+  ],
+  "optionalDependencies": {
+    "@keel-agent/linux-x64-gnu": "0.2.0",
+    "@keel-agent/linux-arm64-gnu": "0.2.0",
+    "@keel-agent/darwin-x64": "0.2.0",
+    "@keel-agent/darwin-arm64": "0.2.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

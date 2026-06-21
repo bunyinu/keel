@@ -1,0 +1,4 @@
+{"at": "2026-06-21T22:02:00+00:00", "agent": "claude", "tool": "Bash", "action": "bash:npm test", "ok": true, "detail": ""}
+{"at": "2026-06-21T22:02:00+00:00", "agent": "claude", "tool": "Bash", "action": "bash:npm test", "ok": true, "detail": ""}
+{"at": "2026-06-21T22:02:13+00:00", "agent": "claude", "tool": "Bash", "action": "bash:npm test", "ok": false, "detail": "tests failed"}
+{"at": "2026-06-21T22:02:13+00:00", "agent": "claude", "tool": "Bash", "action": "bash:npm test", "ok": false, "detail": "tests failed"}

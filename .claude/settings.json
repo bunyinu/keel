@@ -1,0 +1,52 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "/home/lus/.local/bin/keel hook post-tool-use --agent claude",
+            "timeout": 10,
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash|Edit|Write|ApplyPatch"
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "command": "/home/lus/.local/bin/keel hook pre-compact --agent claude",
+            "timeout": 15,
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "/home/lus/.local/bin/keel hook pre-tool-use --agent claude",
+            "timeout": 10,
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash|Edit|Write|ApplyPatch"
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "/home/lus/.local/bin/keel hook session-start --agent claude",
+            "timeout": 15,
+            "type": "command"
+          }
+        ],
+        "matcher": "compact|resume"
+      }
+    ]
+  }
+}

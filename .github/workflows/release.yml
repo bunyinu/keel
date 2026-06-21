@@ -1,0 +1,114 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            npm_pkg: linux-x64-gnu
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            npm_pkg: linux-arm64-gnu
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            npm_pkg: darwin-x64
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            npm_pkg: darwin-arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Stage npm platform package
+        env:
+          KEEL_TARGET: ${{ matrix.target }}
+          KEEL_NPM_PKG: ${{ matrix.npm_pkg }}
+          KEEL_VERSION: ${{ github.ref_name }}
+        run: ./scripts/stage-npm.sh --target "${{ matrix.target }}" --npm-pkg "${{ matrix.npm_pkg }}"
+
+      - name: Archive binary
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p dist
+          cp "target/${{ matrix.target }}/release/keel" "dist/keel-${{ matrix.target }}"
+          tar -czf "dist/keel-${VERSION}-${{ matrix.target }}.tar.gz" -C "target/${{ matrix.target }}/release" keel
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.npm_pkg }}
+          path: |
+            dist/
+            npm/platforms/${{ matrix.npm_pkg }}/
+
+  publish:
+    name: Publish npm + GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: https://registry.npmjs.org
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Merge platform packages
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          for pkg in linux-x64-gnu linux-arm64-gnu darwin-x64 darwin-arm64; do
+            src="artifacts/${pkg}/npm/platforms/${pkg}"
+            if [ -d "$src" ]; then
+              mkdir -p "npm/platforms/${pkg}"
+              cp -r "$src/"* "npm/platforms/${pkg}/"
+            fi
+          done
+          node npm/keel-cli/scripts/sync-version.js "$VERSION"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/dist/*
+          generate_release_notes: true
+
+      - name: Publish platform packages
+        if: ${{ env.NPM_TOKEN != '' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          node npm/keel-cli/scripts/prep-publish.js "$VERSION"
+          for pkg in npm/platforms/*/; do
+            (cd "$pkg" && npm publish --access public)
+          done
+          (cd npm/keel-cli && npm publish --access public)
