@@ -1,6 +1,6 @@
 {
   "name": "@keel-agent/linux-arm64-gnu",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Keel native binary for linux arm64",
   "license": "Apache-2.0",
   "os": [

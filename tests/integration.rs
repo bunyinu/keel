@@ -22,7 +22,7 @@ fn init_installs_hooks_and_keel_dir() {
         .arg("init")
         .assert()
         .success()
-        .stdout(predicate::str::contains("Keel v0.2"));
+        .stdout(predicate::str::contains("Keel v0."));
 
     assert!(tmp.path().join(".keel").is_dir());
     assert!(tmp.path().join(".claude/settings.json").exists());
@@ -132,4 +132,70 @@ fn status_shows_goal() {
         .assert()
         .success()
         .stdout(predicate::str::contains("My task"));
+}
+
+#[test]
+fn constraint_guard_blocks_npm_install() {
+    let tmp = TempDir::new().unwrap();
+    init_git_repo(tmp.path());
+    bin().current_dir(tmp.path()).arg("init").assert().success();
+    bin()
+        .current_dir(tmp.path())
+        .args([
+            "goal",
+            "set",
+            "Ship",
+            "--constraint",
+            "no new deps",
+        ])
+        .assert()
+        .success();
+
+    let payload = json!({
+        "tool_name": "Bash",
+        "tool_input": {"command": "npm install left-pad"}
+    })
+    .to_string();
+
+    let mut cmd = bin();
+    cmd.current_dir(tmp.path())
+        .args(["hook", "pre-tool-use", "--agent", "claude"])
+        .write_stdin(payload);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("constraint guard"));
+}
+
+#[test]
+fn acceptance_gate_blocks_stop_on_failure() {
+    let tmp = TempDir::new().unwrap();
+    init_git_repo(tmp.path());
+    bin().current_dir(tmp.path()).arg("init").assert().success();
+    bin()
+        .current_dir(tmp.path())
+        .args(["config", "set", "--acceptance", "false"])
+        .assert()
+        .success();
+
+    let mut cmd = bin();
+    cmd.current_dir(tmp.path())
+        .args(["hook", "stop", "--agent", "claude"])
+        .write_stdin("{}");
+    cmd.assert()
+        .code(2)
+        .stdout(predicate::str::contains("acceptance gate failed"));
+}
+
+#[test]
+fn doctor_passes_after_init() {
+    let tmp = TempDir::new().unwrap();
+    init_git_repo(tmp.path());
+    bin().current_dir(tmp.path()).arg("init").assert().success();
+
+    bin()
+        .current_dir(tmp.path())
+        .arg("doctor")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(".keel initialized"));
 }

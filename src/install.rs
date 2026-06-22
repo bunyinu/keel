@@ -89,6 +89,10 @@ fn claude_hooks() -> Value {
         "PostToolUse": [{
             "matcher": "Bash|Edit|Write|ApplyPatch",
             "hooks": [{"type": "command", "command": hook_cmd("post-tool-use", "claude"), "timeout": 10}]
+        }],
+        "Stop": [{
+            "matcher": "",
+            "hooks": [{"type": "command", "command": hook_cmd("stop", "claude"), "timeout": 120}]
         }]
     })
 }
@@ -137,6 +141,14 @@ fn codex_hooks() -> Value {
         }],
         "UserPromptSubmit": [{
             "hooks": [{"type": "command", "command": hook_cmd("user-prompt-submit", "codex"), "timeout": 5}]
+        }],
+        "Stop": [{
+            "hooks": [{
+                "type": "command",
+                "command": hook_cmd("stop", "codex"),
+                "timeout": 120,
+                "statusMessage": "Keel: running acceptance gate"
+            }]
         }]
     })
 }
@@ -225,6 +237,12 @@ pub fn install(project: Option<&Path>) -> Result<PathBuf> {
     )?;
 
     let codex_dir = root.join(".codex");
+    if codex_dir.exists() && !codex_dir.is_dir() {
+        anyhow::bail!(
+            "{} exists as a file, not a directory. Remove or rename it, then run `keel init` again.",
+            codex_dir.display()
+        );
+    }
     fs::create_dir_all(&codex_dir)?;
     let hooks_path = codex_dir.join("hooks.json");
     let mut codex_doc: Value = if hooks_path.exists() {

@@ -29,6 +29,9 @@ async fn main() -> anyhow::Result<()> {
 
     let app = router(AppState {
         version: VERSION.to_string(),
+        stripe_payment_link: std::env::var("KEEL_STRIPE_PAYMENT_LINK").unwrap_or_else(|_| {
+            "https://buy.stripe.com/test_keel_pro_placeholder".to_string()
+        }),
     })
     .layer(CorsLayer::permissive())
     .layer(TraceLayer::new_for_http());

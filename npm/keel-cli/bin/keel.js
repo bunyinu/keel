@@ -58,9 +58,42 @@ function resolveBinary() {
   return "keel";
 }
 
+function runUpdate() {
+  const { spawnSync } = require("node:child_process");
+
+  const npm = spawnSync("npm", ["--version"], { encoding: "utf8" });
+  if (npm.error || npm.status !== 0) {
+    console.error(
+      "keel update requires npm.\n\nInstall Node.js 18+, then run:\n  npm install -g @keel-agent/cli@latest"
+    );
+    process.exit(1);
+  }
+
+  console.log("Updating Keel (@keel-agent/cli@latest)...");
+  const install = spawnSync("npm", ["install", "-g", "@keel-agent/cli@latest"], {
+    stdio: "inherit",
+  });
+  if (install.status !== 0) {
+    process.exit(install.status ?? 1);
+  }
+
+  const ver = spawnSync("npm", ["list", "-g", "@keel-agent/cli", "--depth=0"], {
+    encoding: "utf8",
+  });
+  const line = (ver.stdout || "").split("\n").find((l) => l.includes("@keel-agent/cli"));
+  if (line) console.log(line.trim());
+  console.log("Done. If `keel --version` looks stale, open a new terminal or run: hash -r");
+}
+
 function main() {
-  const bin = resolveBinary();
   const args = process.argv.slice(2);
+
+  if (args[0] === "update") {
+    runUpdate();
+    return;
+  }
+
+  const bin = resolveBinary();
 
   const child = spawn(bin, args, {
     stdio: "inherit",
@@ -75,7 +108,7 @@ function main() {
       console.error(
         "keel: native binary not found.\n" +
           "Install with: npm install -g @keel-agent/cli\n" +
-          "Or build from source: cargo install --path ."
+          "Update with:  keel update"
       );
     } else {
       console.error(`keel: ${err.message}`);

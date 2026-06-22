@@ -1,12 +1,12 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use serde_json::json;
 
 use keel::cloud::{pull_state, push_state, save_cloud_config, CloudConfig};
+use keel::goal_edit::{save_goal, GoalForm};
 use keel::hooks::Agent;
 use keel::install::install;
 use keel::snapshot::{render_snapshot, write_snapshot};
-use keel::state::{load_state, log_event, save_state, Decision, Goal};
+use keel::state::{load_config, load_state, save_config, save_state, Decision};
 use keel::paths::{find_project_root, utcnow};
 use keel::VERSION;
 
@@ -46,6 +46,17 @@ enum Commands {
         #[arg(long)]
         print: bool,
     },
+    /// Interactive goal editor (TUI)
+    Tui,
+    /// Update Keel to the latest release (npm)
+    Update,
+    /// Diagnose installation, hooks, and project setup
+    Doctor,
+    /// Keel configuration
+    Config {
+        #[command(subcommand)]
+        cmd: ConfigCmd,
+    },
     /// Cloud sync (Keel hosted)
     Cloud {
         #[command(subcommand)]
@@ -74,6 +85,18 @@ enum GoalCmd {
     },
     /// Show active goal as JSON
     Show,
+}
+
+#[derive(Subcommand)]
+enum ConfigCmd {
+    /// Show config.json
+    Show,
+    /// Set configuration values
+    Set {
+        /// Shell command for acceptance gate (use "off" to disable)
+        #[arg(long)]
+        acceptance: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -110,6 +133,13 @@ fn main() -> Result<()> {
         Commands::Decide { text } => cmd_decide(&text),
         Commands::Status => cmd_status(),
         Commands::Snapshot { print } => cmd_snapshot(print),
+        Commands::Tui => keel::tui::run_tui(),
+        Commands::Update => cmd_update(),
+        Commands::Doctor => cmd_doctor(),
+        Commands::Config { cmd } => match cmd {
+            ConfigCmd::Show => cmd_config_show(),
+            ConfigCmd::Set { acceptance } => cmd_config_set(acceptance),
+        },
         Commands::Cloud { cmd } => match cmd {
             CloudCmd::Link { url, project, key } => cmd_cloud_link(&url, &project, &key),
             CloudCmd::Push => cmd_cloud_push(),
@@ -123,11 +153,79 @@ fn main() -> Result<()> {
     }
 }
 
+fn cmd_update() -> Result<()> {
+    if std::env::var("KEEL_MANAGED_BY_NPM").is_ok() {
+        anyhow::bail!("update is handled by the npm shim; re-run: keel update");
+    }
+
+    let npm = std::process::Command::new("npm")
+        .arg("--version")
+        .output()
+        .ok()
+        .filter(|o| o.status.success());
+
+    if npm.is_some() {
+        println!("Updating Keel via npm (@keel-agent/cli@latest)...");
+        let status = std::process::Command::new("npm")
+            .args(["install", "-g", "@keel-agent/cli@latest"])
+            .status()?;
+        if !status.success() {
+            anyhow::bail!("npm install failed");
+        }
+        println!("Done. Run: keel --version");
+        println!("If the version is stale, open a new terminal or run: hash -r");
+        return Ok(());
+    }
+
+    anyhow::bail!(
+        "Install and update Keel with npm (the standard method):\n\n  npm install -g @keel-agent/cli@latest\n\nRequires Node.js 18+."
+    );
+}
+
+fn cmd_doctor() -> Result<()> {
+    let checks = keel::doctor::run_doctor()?;
+    let ok = keel::doctor::print_report(&checks);
+    if ok {
+        println!("\nKeel doctor: all critical checks passed.");
+    } else {
+        println!("\nKeel doctor: fix the items marked ✗ above.");
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+fn cmd_config_show() -> Result<()> {
+    let config = load_config(None)?;
+    println!("{}", serde_json::to_string_pretty(&config)?);
+    Ok(())
+}
+
+fn cmd_config_set(acceptance: Option<String>) -> Result<()> {
+    let Some(val) = acceptance else {
+        anyhow::bail!("usage: keel config set --acceptance \"npm test\"  (or --acceptance off)");
+    };
+    let mut config = load_config(None)?;
+    if val.eq_ignore_ascii_case("off") {
+        config.acceptance_gate.enabled = false;
+        config.acceptance_gate.command.clear();
+        save_config(&config, None)?;
+        println!("Acceptance gate disabled");
+        return Ok(());
+    }
+    config.acceptance_gate.enabled = true;
+    config.acceptance_gate.command = val.clone();
+    save_config(&config, None)?;
+    println!("Acceptance gate enabled: {val}");
+    println!("Runs on agent Stop hook before session ends.");
+    Ok(())
+}
+
 fn cmd_init() -> Result<()> {
     let root = install(None)?;
     println!("Keel v{VERSION} initialized in {}", root.join(".keel").display());
     println!("Hooks installed for Claude Code and Codex (native binary)");
     println!("Next: keel goal set \"your task\" --accept \"criterion 1\"");
+    println!("     or: keel tui");
     Ok(())
 }
 
@@ -137,20 +235,13 @@ fn cmd_goal_set(
     constraint: Vec<String>,
     step: Option<String>,
 ) -> Result<()> {
-    let mut state = load_state(None)?;
-    state.goal = Some(Goal {
+    let form = GoalForm {
         title: title.to_string(),
+        step: step.unwrap_or_default(),
         acceptance: accept,
         constraints: constraint,
-        started_at: utcnow(),
-    });
-    if let Some(s) = step {
-        state.progress.current_step = Some(s);
-    }
-    save_state(&mut state, None)?;
-    write_snapshot(None)?;
-    sync_cloud_after_write()?;
-    log_event(None, "goal_set", json!({"title": title}))?;
+    };
+    save_goal(&form, None, "cli")?;
     println!("Goal set: {title}");
     Ok(())
 }
@@ -241,6 +332,10 @@ fn sync_cloud_after_write() -> Result<()> {
 }
 
 fn cmd_cloud_link(url: &str, project: &str, key: &str) -> Result<()> {
+    let cwd = std::env::current_dir()?;
+    if !cwd.join(".git").exists() && !cwd.join(".keel").exists() {
+        eprintln!("Tip: run `cd your-project` before `keel cloud link` so state stays in the repo.");
+    }
     save_cloud_config(&CloudConfig {
         url: url.trim_end_matches('/').to_string(),
         project_id: project.to_string(),

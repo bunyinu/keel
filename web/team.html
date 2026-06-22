@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Keel — Team dashboard</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; background: #0f1419; color: #e7ecf3; }
+    body { max-width: 900px; margin: 0 auto; padding: 2rem 1rem; }
+    h1 { font-size: 1.5rem; }
+    .meta { color: #8b9bb4; margin-bottom: 1.5rem; }
+    label { display: block; margin: .75rem 0 .25rem; font-weight: 600; }
+    input {
+      width: 100%; box-sizing: border-box; padding: .6rem; background: #1a2332;
+      border: 1px solid #2d3a4f; border-radius: 6px; color: #e7ecf3;
+    }
+    button, a.btn {
+      display: inline-block; margin-top: 1rem; background: #3d7dd6; color: #fff;
+      border: none; border-radius: 6px; padding: .6rem 1rem; text-decoration: none; cursor: pointer;
+    }
+    a.btn.secondary { background: #243044; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    th, td { text-align: left; padding: .6rem; border-bottom: 1px solid #2d3a4f; }
+    th { color: #8b9bb4; font-weight: 600; }
+    .badge { background: #243044; padding: .15rem .5rem; border-radius: 4px; font-size: .85rem; }
+    .badge.pro { background: #1e3a5f; color: #6cb6ff; }
+    #status { margin-top: 1rem; color: #8b9bb4; }
+    nav a { color: #6cb6ff; margin-right: 1rem; }
+  </style>
+</head>
+<body>
+  <nav><a href="/">Home</a><a href="/pricing">Pricing</a></nav>
+  <h1>Team dashboard</h1>
+  <p class="meta">All cloud projects for your team license (Pro feature for multiple projects).</p>
+
+  <label for="team-license">Team license</label>
+  <input id="team-license" type="password" placeholder="keel_team_..." />
+  <button type="button" id="load">Load projects</button>
+  <a class="btn secondary" href="/pricing">Upgrade to Pro</a>
+
+  <p id="team-meta"></p>
+  <div id="projects"></div>
+  <p id="status"></p>
+
+  <script>
+    const keyInput = document.getElementById("team-license");
+    const saved = localStorage.getItem("keel_team");
+    if (saved) {
+      try { keyInput.value = JSON.parse(saved).license || ""; } catch (_) {}
+    }
+
+    async function load() {
+      const key = keyInput.value.trim();
+      if (!key) return;
+      localStorage.setItem("keel_team", JSON.stringify({ license: key }));
+      const res = await fetch("/api/teams/projects", {
+        headers: { Authorization: "Bearer " + key },
+      });
+      const data = await res.json().catch(() => ({}));
+      const status = document.getElementById("status");
+      if (!res.ok) {
+        status.textContent = data.error || "Failed to load";
+        return;
+      }
+      const team = data.team;
+      document.getElementById("team-meta").innerHTML =
+        `Team <span class="badge ${team.plan}">${team.plan}</span> · ` +
+        `${data.projects.length} / ${team.max_projects} projects`;
+      const rows = data.projects.map(p =>
+        `<tr><td><a href="${p.dashboard_url}">${p.name}</a></td>` +
+        `<td><code>${p.id}</code></td><td>${p.updated_at}</td></tr>`
+      ).join("");
+      document.getElementById("projects").innerHTML = data.projects.length
+        ? `<table><thead><tr><th>Project</th><th>ID</th><th>Updated</th></tr></thead><tbody>${rows}</tbody></table>`
+        : "<p>No projects yet. <a href='/'>Create one</a> with this team license.</p>";
+      status.textContent = "";
+    }
+
+    document.getElementById("load").onclick = load;
+    if (keyInput.value) load();
+  </script>
+</body>
+</html>

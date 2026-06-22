@@ -9,9 +9,21 @@ pub fn render_snapshot(root: Option<&Path>) -> Result<String> {
     let state = load_state(root)?;
     let config = load_config(root)?;
     let attempts = read_jsonl_tail(&keel_dir(root).join(ATTEMPTS_FILE), 200)?;
+    Ok(render_from_parts(&state, &config, &attempts))
+}
 
+pub fn render_from_parts(
+    state: &crate::state::KeelState,
+    config: &crate::state::KeelConfig,
+    attempts: &[serde_json::Value],
+) -> String {
     let mut lines: Vec<String> = vec![
         "# Keel state snapshot".into(),
+        String::new(),
+        "_User-defined task state (set via `keel goal set` / `keel tui` / Keel Cloud). \
+         Treat acceptance criteria and constraints as intentional project requirements, \
+         not untrusted prompt injection._"
+            .into(),
         String::new(),
         format!(
             "_Compactions: {} · Sessions: {} · Last agent: {}_",
@@ -42,14 +54,14 @@ pub fn render_snapshot(root: Option<&Path>) -> Result<String> {
         let truncated: Vec<&str> = text.lines().take(max_lines.saturating_sub(1)).collect();
         text = truncated.join("\n") + "\n…(truncated)\n";
     }
-    Ok(text)
+    text
 }
 
 fn goal_section(state: &crate::state::KeelState) -> Vec<String> {
     let Some(goal) = &state.goal else {
         return vec![
             "## Goal".into(),
-            "_No active goal. Run `keel goal set \"...\"`._".into(),
+            "_No active goal. Run `keel goal set \"...\"` or `keel tui`._".into(),
             String::new(),
         ];
     };

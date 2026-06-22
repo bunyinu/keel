@@ -21,13 +21,21 @@ pub fn find_project_root(start: Option<&Path>) -> PathBuf {
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     let start = start.canonicalize().unwrap_or(start);
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .and_then(|h| h.canonicalize().ok());
 
     for dir in start.ancestors() {
-        if dir.join(KEEL_DIR).is_dir() {
-            return dir.to_path_buf();
-        }
         if dir.join(".git").exists() {
             return dir.to_path_buf();
+        }
+        if dir.join(KEEL_DIR).is_dir() {
+            // Ignore ~/.keel when working in a subdirectory (common mistake after
+            // `keel cloud link` run from $HOME).
+            let is_home_keel = home.as_ref().is_some_and(|h| h == dir);
+            if !is_home_keel {
+                return dir.to_path_buf();
+            }
         }
     }
     start
@@ -100,5 +108,26 @@ mod tests {
         write_json_atomic(&path, &v).unwrap();
         let back = read_json(&path, serde_json::json!(null)).unwrap();
         assert_eq!(back["a"], 1);
+    }
+
+    #[test]
+    fn ignores_home_keel_for_subdirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let project = home.join("myapp");
+        std::fs::create_dir_all(home.join(KEEL_DIR)).unwrap();
+        std::fs::create_dir_all(&project).unwrap();
+
+        let old_home = std::env::var_os("HOME");
+        std::env::set_var("HOME", &home);
+
+        let root = find_project_root(Some(&project));
+        assert_eq!(root, project.canonicalize().unwrap());
+
+        if let Some(h) = old_home {
+            std::env::set_var("HOME", h);
+        } else {
+            std::env::remove_var("HOME");
+        }
     }
 }

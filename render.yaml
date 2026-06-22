@@ -10,6 +10,14 @@ services:
         value: /data/keel.db
       - key: RUST_LOG
         value: info
+      - key: KEEL_FREE_PROJECT_LIMIT
+        value: "1"
+      - key: KEEL_PRO_PROJECT_LIMIT
+        value: "50"
+      - key: KEEL_STRIPE_PAYMENT_LINK
+        sync: false
+      - key: KEEL_UPGRADE_CODES
+        sync: false
     disk:
       name: keel-data
       mountPath: /data

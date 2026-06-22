@@ -68,6 +68,14 @@ fn default_version() -> u32 {
     1
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct AcceptanceGateConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub command: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct LoopBreakerConfig {
     pub max_same_failure: u32,
@@ -80,6 +88,8 @@ pub struct KeelConfig {
     pub snapshot_max_lines: u32,
     pub snapshot_max_decisions: u32,
     pub snapshot_max_failures: u32,
+    #[serde(default)]
+    pub acceptance_gate: AcceptanceGateConfig,
     pub installed_at: Option<String>,
 }
 
@@ -93,6 +103,7 @@ impl Default for KeelConfig {
             snapshot_max_lines: 120,
             snapshot_max_decisions: 8,
             snapshot_max_failures: 6,
+            acceptance_gate: AcceptanceGateConfig::default(),
             installed_at: None,
         }
     }
@@ -104,7 +115,21 @@ pub fn load_state(root: Option<&Path>) -> Result<KeelState> {
     if value.is_null() {
         return Ok(KeelState::default());
     }
+    let value = normalize_state_json(value);
     Ok(serde_json::from_value(value)?)
+}
+
+/// Fill legacy / cloud-empty state objects so older binaries and `{}` pulls deserialize.
+fn normalize_state_json(mut value: serde_json::Value) -> serde_json::Value {
+    let Some(obj) = value.as_object_mut() else {
+        return value;
+    };
+    obj.entry("version").or_insert(json!(default_version()));
+    obj.entry("progress").or_insert(json!({}));
+    obj.entry("decisions").or_insert(json!([]));
+    obj.entry("compactions").or_insert(json!(0));
+    obj.entry("sessions").or_insert(json!(0));
+    value
 }
 
 pub fn save_state(state: &mut KeelState, root: Option<&Path>) -> Result<()> {
@@ -198,5 +223,15 @@ mod tests {
         save_state(&mut state, Some(root)).unwrap();
         let loaded = load_state(Some(root)).unwrap();
         assert_eq!(loaded.goal.unwrap().title, "test");
+    }
+
+    #[test]
+    fn load_empty_cloud_state() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        std::fs::create_dir_all(root.join(crate::KEEL_DIR)).unwrap();
+        std::fs::write(root.join(crate::KEEL_DIR).join(STATE_FILE), "{}\n").unwrap();
+        let loaded = load_state(Some(root)).unwrap();
+        assert_eq!(loaded.version, default_version());
     }
 }

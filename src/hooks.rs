@@ -3,6 +3,8 @@ use serde_json::{json, Value};
 use std::io::{self, Read};
 use std::process::exit;
 
+use crate::acceptance::run_acceptance_gate;
+use crate::constraints::{check_pre_tool_constraints, record_violation};
 use crate::loop_breaker::{check_pre_tool, record_tool_result};
 use crate::snapshot::{render_snapshot, write_snapshot};
 use crate::state::{load_state, log_event, save_state, KeelState};
@@ -91,6 +93,7 @@ pub fn run_hook(event: &str, agent: Agent) -> Result<()> {
         "session-start" => handle_session_start(agent),
         "pre-tool-use" => handle_pre_tool_use(agent),
         "post-tool-use" => handle_post_tool_use(agent),
+        "stop" => handle_stop(agent),
         "user-prompt-submit" => handle_user_prompt_submit(agent),
         other => anyhow::bail!("unknown hook: {other}"),
     }
@@ -115,10 +118,16 @@ fn handle_pre_compact(agent: Agent) -> Result<()> {
     )?;
 
     if agent == Agent::Claude {
-        eprintln!(
-            "Keel: state saved before compaction. After resume, read .keel/snapshot.md first."
+        let ctx = snapshot_text()?;
+        // Exit 0 + systemMessage: preserve task state through compaction (do NOT exit 2 — that blocks compact).
+        println!(
+            "{}",
+            json!({
+                "systemMessage": format!(
+                    "Keel task state to preserve through compaction:\n\n{ctx}"
+                ),
+            })
         );
-        exit(2);
     }
     Ok(())
 }
@@ -182,6 +191,15 @@ fn handle_pre_tool_use(agent: Agent) -> Result<()> {
         }
         emit_claude_block(&reason);
     }
+
+    let (block, reason) = check_pre_tool_constraints(None, tool, &tool_input)?;
+    if block {
+        let _ = record_violation(None, &reason);
+        if agent == Agent::Codex {
+            emit_codex_block(&reason);
+        }
+        emit_claude_block(&reason);
+    }
     Ok(())
 }
 
@@ -205,6 +223,31 @@ fn handle_post_tool_use(agent: Agent) -> Result<()> {
         sync_cloud_quiet();
     }
     Ok(())
+}
+
+fn handle_stop(agent: Agent) -> Result<()> {
+    let (ok, reason) = run_acceptance_gate(None)?;
+    if ok {
+        return Ok(());
+    }
+    if agent == Agent::Codex {
+        println!(
+            "{}",
+            json!({
+                "continue": false,
+                "systemMessage": reason,
+            })
+        );
+        exit(0);
+    }
+    println!(
+        "{}",
+        json!({
+            "continue": false,
+            "systemMessage": reason,
+        })
+    );
+    exit(2);
 }
 
 fn handle_user_prompt_submit(agent: Agent) -> Result<()> {

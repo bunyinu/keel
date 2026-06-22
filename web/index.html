@@ -46,9 +46,12 @@
 <body>
   <h1>Keel</h1>
   <p class="tagline">Agent state for Claude Code &amp; Codex — survives compaction, works across tools.</p>
+  <p class="tagline"><a href="/pricing" style="color:#6cb6ff">Free: 1 project · Pro: $15/mo for teams →</a></p>
 
   <label for="name">Project name</label>
   <input id="name" type="text" placeholder="my-app" autocomplete="off" />
+  <label for="team-license">Team license (optional — for additional projects on Pro)</label>
+  <input id="team-license" type="text" placeholder="keel_team_... (saved after first project)" autocomplete="off" />
   <button id="create">Create project</button>
 
   <div id="result" class="result">
@@ -57,6 +60,7 @@
       <p class="warn">Shown once. Store it somewhere safe.</p>
       <pre id="api-key"></pre>
       <p>Project ID: <code id="project-id"></code></p>
+      <p>Plan: <code id="plan"></code> · Team license: <code id="team-license-out"></code></p>
     </div>
     <div class="card">
       <strong>Connect your machine</strong>
@@ -79,32 +83,51 @@
     const $ = (id) => document.getElementById(id);
     $("create").onclick = async () => {
       const name = $("name").value.trim();
+      const team_license = $("team-license").value.trim();
       if (!name) return alert("Enter a project name");
       $("create").disabled = true;
       try {
+        const body = { name };
+        if (team_license) body.team_license = team_license;
         const res = await fetch("/api/projects", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name }),
+          body: JSON.stringify(body),
         });
-        if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
+        if (res.status === 402) {
+          alert(data.error + "\\n\\nUpgrade at " + (data.upgrade_url || "/pricing"));
+          window.location.href = data.upgrade_url || "/pricing";
+          return;
+        }
+        if (!res.ok) throw new Error(data.error || await res.text());
         const base = location.origin;
         $("api-key").textContent = data.api_key;
         $("project-id").textContent = data.id;
+        $("plan").textContent = data.plan + " (" + data.projects_used + "/" + data.projects_max + ")";
+        $("team-license-out").textContent = data.team_license;
+        $("team-license").value = data.team_license;
+        localStorage.setItem("keel_team", JSON.stringify({
+          license: data.team_license, id: data.team_id, plan: data.plan
+        }));
         $("commands").textContent =
           `npm install -g @keel-agent/cli\n` +
+          `keel update\n` +
           `keel cloud link --url ${base} --project ${data.id} --key ${data.api_key}\n` +
           `cd your-repo && keel init`;
         $("dashboard-link").href = data.dashboard_url;
         $("result").classList.add("show");
-        localStorage.setItem("keel_project", JSON.stringify({ id: data.id, key: data.api_key, url: base }));
+        localStorage.setItem("keel_project", JSON.stringify({ id: data.id, key: data.api_key, url: base, name }));
       } catch (e) {
         alert("Failed: " + e.message);
       } finally {
         $("create").disabled = false;
       }
     };
+    const savedTeam = localStorage.getItem("keel_team");
+    if (savedTeam) {
+      try { $("team-license").value = JSON.parse(savedTeam).license || ""; } catch (_) {}
+    }
     const saved = localStorage.getItem("keel_project");
     if (saved) {
       try {
