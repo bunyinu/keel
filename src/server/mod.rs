@@ -288,7 +288,7 @@ async fn home(axum::extract::State(state): axum::extract::State<AppState>) -> Ht
         .as_deref()
         .map(html_escape)
         .unwrap_or_default();
-    html = html.replace("window.KEEL_CREATE_SECRET || \"\"", &format!("\"{secret}\""));
+    html = html.replace("__KEEL_CREATE_SECRET__", &secret);
     Html(html)
 }
 

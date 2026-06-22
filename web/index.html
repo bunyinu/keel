@@ -89,6 +89,7 @@
   </div>
 
   <script>
+    window.KEEL_CREATE_SECRET = "__KEEL_CREATE_SECRET__";
     const $ = (id) => document.getElementById(id);
     const createSecret = window.KEEL_CREATE_SECRET || "";
     $("create").onclick = async () => {
