@@ -1,6 +1,6 @@
 {
   "name": "@keel-agent/darwin-x64",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Keel native binary for macOS x64",
   "license": "Apache-2.0",
   "os": [

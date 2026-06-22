@@ -41,7 +41,13 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - name: Install cross toolchain (linux arm64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+
       - name: Build release binary
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Stage npm platform package
@@ -68,6 +74,7 @@ jobs:
   publish:
     name: Publish npm + GitHub release
     needs: build
+    if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -101,14 +108,15 @@ jobs:
           generate_release_notes: true
 
       - name: Publish platform packages
-        if: ${{ env.NPM_TOKEN != '' }}
+        if: ${{ secrets.NPM_TOKEN != '' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           node npm/keel-cli/scripts/prep-publish.js "$VERSION"
           for pkg in npm/platforms/*/; do
-            (cd "$pkg" && npm publish --access public)
+            if [ -f "${pkg}bin/keel" ]; then
+              (cd "$pkg" && npm publish --access public)
+            fi
           done
           (cd npm/keel-cli && npm publish --access public)
