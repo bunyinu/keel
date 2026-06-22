@@ -11,6 +11,7 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=builder /app/target/release/keel-server /usr/local/bin/keel-server
+COPY --from=builder /app/web /app/web
 RUN mkdir -p /data
 ENV KEEL_DB_PATH=/data/keel.db
 ENV PORT=8080

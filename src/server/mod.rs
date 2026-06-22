@@ -397,10 +397,19 @@ async fn trust_page() -> Html<&'static str> {
 }
 
 async fn demo_gif() -> impl IntoResponse {
+    let path = std::path::Path::new("/app/web/demo.gif");
+    if let Ok(bytes) = std::fs::read(path) {
+        return (
+            [(header::CONTENT_TYPE, "image/gif")],
+            bytes,
+        )
+            .into_response();
+    }
     (
         [(header::CONTENT_TYPE, "image/gif")],
         include_bytes!("../../web/demo.gif").as_slice(),
     )
+        .into_response()
 }
 
 fn html_escape(s: &str) -> String {
