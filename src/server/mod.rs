@@ -97,7 +97,11 @@ async fn create_project_handler(
 ) -> Result<Response, StatusCode> {
     let name = body.name.trim();
     if name.is_empty() {
-        return Err(StatusCode::BAD_REQUEST);
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Project name is required"})),
+        )
+            .into_response());
     }
     let project = match create_project(name, body.team_license.as_deref()) {
         Ok(p) => p,
@@ -218,9 +222,13 @@ async fn update_goal_handler(
     Path(id): Path<String>,
     headers: HeaderMap,
     Json(form): Json<GoalForm>,
-) -> Result<Json<GoalResponse>, StatusCode> {
+) -> Result<Response, StatusCode> {
     if form.title.trim().is_empty() {
-        return Err(StatusCode::BAD_REQUEST);
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Goal title is required"})),
+        )
+            .into_response());
     }
     let project = auth_project(&headers, &id).await?;
     let mut state: KeelState = serde_json::from_str(&project.state_json).unwrap_or_default();
@@ -232,7 +240,8 @@ async fn update_goal_handler(
     Ok(Json(GoalResponse {
         snapshot,
         state: state_value,
-    }))
+    })
+    .into_response())
 }
 
 async fn dashboard_edit(Path(id): Path<String>) -> Result<Html<String>, StatusCode> {

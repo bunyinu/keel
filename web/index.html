@@ -103,13 +103,17 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
-        const data = await res.json();
+        const raw = await res.text();
+        let data = {};
+        try { data = raw ? JSON.parse(raw) : {}; } catch (_) {}
         if (res.status === 402) {
-          alert(data.error + "\\n\\nUpgrade at " + (data.upgrade_url || "/pricing"));
+          alert((data.error || "Project limit reached") + "\n\nUpgrade at " + (data.upgrade_url || "/pricing"));
           window.location.href = data.upgrade_url || "/pricing";
           return;
         }
-        if (!res.ok) throw new Error(data.error || await res.text());
+        if (!res.ok) {
+          throw new Error(data.error || raw || `Request failed (${res.status})`);
+        }
         const base = location.origin;
         $("api-key").textContent = data.api_key;
         $("project-id").textContent = data.id;
