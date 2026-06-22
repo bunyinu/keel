@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Keel — Project dashboard</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; background: #0f1419; color: #e7ecf3; }
+    body { max-width: 820px; margin: 0 auto; padding: 2rem 1rem; }
+    h1 { font-size: 1.5rem; }
+    .meta { color: #8b9bb4; font-size: .9rem; margin-bottom: 1rem; }
+    label { display: block; margin: 1rem 0 .35rem; font-weight: 600; }
+    input {
+      width: 100%; box-sizing: border-box; padding: .6rem; background: #1a2332;
+      border: 1px solid #2d3a4f; border-radius: 6px; color: #e7ecf3;
+    }
+    button, a.btn {
+      display: inline-block; margin-top: 1rem; background: #3d7dd6; color: #fff;
+      border: none; border-radius: 6px; padding: .6rem 1rem; text-decoration: none; cursor: pointer;
+    }
+    a.btn.secondary { background: #243044; color: #e7ecf3; margin-left: .5rem; }
+    pre { background: #1a2332; padding: 1rem; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; }
+    .card { background: #1a2332; border-radius: 8px; padding: 1rem; margin: 1rem 0; }
+    code { background: #243044; padding: .15rem .4rem; border-radius: 4px; }
+    a { color: #6cb6ff; }
+    .gate { max-width: 480px; }
+    .warn { color: #f0b429; font-size: .9rem; }
+    .err { color: #ff8a8a; }
+    #content { display: none; }
+  </style>
+</head>
+<body>
+  <div id="gate" class="gate">
+    <h1>Project dashboard</h1>
+    <p class="meta">Project <code id="project-id">__PROJECT_ID__</code></p>
+    <p class="warn">Your API key is required. Anyone with the link alone cannot view this project.</p>
+    <label for="api_key">API key</label>
+    <input id="api_key" type="password" placeholder="keel_…" autocomplete="off" />
+    <button type="button" id="unlock">Unlock dashboard</button>
+    <p id="gate-status" class="err"></p>
+  </div>
+
+  <div id="content">
+    <h1 id="title">Keel</h1>
+    <p class="meta">Project <code>__PROJECT_ID__</code> · <span id="updated"></span></p>
+    <p><a id="edit-link" href="/dashboard/__PROJECT_ID__/edit">Edit goal</a> · <a href="/">Home</a></p>
+    <div class="card">
+      <h2>Connect your repo</h2>
+      <pre id="connect-cmd"></pre>
+    </div>
+    <h2>Snapshot</h2>
+    <pre id="snapshot"></pre>
+  </div>
+
+  <script>
+    const projectId = "__PROJECT_ID__";
+    const storageKey = "keel_api_key_" + projectId;
+    const keyInput = document.getElementById("api_key");
+    const gate = document.getElementById("gate");
+    const content = document.getElementById("content");
+    const gateStatus = document.getElementById("gate-status");
+    keyInput.value = localStorage.getItem(storageKey) || "";
+
+    async function load() {
+      const key = keyInput.value.trim();
+      if (!key) { gateStatus.textContent = "API key required"; return; }
+      gateStatus.textContent = "";
+      const res = await fetch("/api/projects/" + projectId, {
+        headers: { Authorization: "Bearer " + key },
+      });
+      if (!res.ok) {
+        gateStatus.textContent = res.status === 401 || res.status === 403
+          ? "Invalid API key for this project"
+          : "Failed to load (" + res.status + ")";
+        content.style.display = "none";
+        gate.style.display = "block";
+        return;
+      }
+      const data = await res.json();
+      localStorage.setItem(storageKey, key);
+      document.getElementById("title").textContent = "Keel — " + (data.name || "project");
+      document.getElementById("updated").textContent = "updated " + (data.updated_at || "");
+      document.getElementById("snapshot").textContent = data.snapshot || "(empty)";
+      const base = location.origin;
+      document.getElementById("connect-cmd").textContent =
+        "npm install -g @keel-agent/cli\n" +
+        "keel cloud link --url " + base + " --project " + projectId + " --key " + key + "\n" +
+        "cd your-repo && keel onboard \"your task\" --accept \"tests pass\"";
+      gate.style.display = "none";
+      content.style.display = "block";
+    }
+
+    document.getElementById("unlock").onclick = load;
+    keyInput.addEventListener("keydown", (e) => { if (e.key === "Enter") load(); });
+    if (keyInput.value) load();
+  </script>
+</body>
+</html>

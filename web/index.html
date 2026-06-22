@@ -90,6 +90,7 @@
 
   <script>
     const $ = (id) => document.getElementById(id);
+    const createSecret = window.KEEL_CREATE_SECRET || "";
     $("create").onclick = async () => {
       const name = $("name").value.trim();
       const team_license = $("team-license").value.trim();
@@ -98,9 +99,11 @@
       try {
         const body = { name };
         if (team_license) body.team_license = team_license;
+        const headers = { "Content-Type": "application/json" };
+        if (createSecret) headers["X-Keel-Create-Secret"] = createSecret;
         const res = await fetch("/api/projects", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify(body),
         });
         const raw = await res.text();
@@ -130,6 +133,7 @@
           `cd your-repo && keel onboard "your task" --accept "tests pass"`;
         $("dashboard-link").href = data.dashboard_url;
         $("result").classList.add("show");
+        localStorage.setItem("keel_api_key_" + data.id, data.api_key);
         localStorage.setItem("keel_project", JSON.stringify({ id: data.id, key: data.api_key, url: base, name }));
       } catch (e) {
         alert("Failed: " + e.message);
@@ -152,6 +156,7 @@
           `keel cloud link --url ${p.url} --project ${p.id} --key ${p.key}`;
         $("dashboard-link").href = `/dashboard/${p.id}`;
         $("result").classList.add("show");
+        if (p.id && p.key) localStorage.setItem("keel_api_key_" + p.id, p.key);
       } catch (_) {}
     }
   </script>

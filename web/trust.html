@@ -36,6 +36,15 @@
   <h2>Hooks &amp; enforcement</h2>
   <p>Keel hooks can <strong>block</strong> tool use (dependency installs, edits in read-only mode) and <strong>block session end</strong> until an acceptance command passes. That is intentional — review <code>.claude/settings.json</code>, <code>.codex/hooks.json</code>, and <code>.cursor/hooks.json</code> after <code>keel init</code>.</p>
 
+  <h2>Keel Cloud access control</h2>
+  <p>Cloud projects are keyed, not public-by-link:</p>
+  <ul>
+    <li><strong>Dashboard URLs</strong> (<code>/dashboard/{id}</code>) only show a login gate. Goal text and snapshots load only after a valid project <strong>API key</strong> is entered (same key as <code>keel cloud link</code>).</li>
+    <li><strong>API reads and writes</strong> (<code>GET/POST/PUT /api/projects/…</code>) require <code>Authorization: Bearer &lt;api_key&gt;</code>. A UUID in the URL is not enough.</li>
+    <li><strong>Project creation</strong> may require a server-side create secret (<code>KEEL_CREATE_SECRET</code>) so bots cannot spam new projects.</li>
+    <li>Treat your API key like a password — anyone with it can read and change that project’s cloud state.</li>
+  </ul>
+
   <h2>Data deletion</h2>
   <ul>
     <li><strong>Local:</strong> Delete <code>.keel/</code> and remove Keel hook entries from agent settings.</li>

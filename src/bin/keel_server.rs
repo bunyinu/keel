@@ -40,6 +40,7 @@ async fn main() -> anyhow::Result<()> {
         stripe_payment_link: std::env::var("KEEL_STRIPE_PAYMENT_LINK").unwrap_or_else(|_| {
             "https://buy.stripe.com/test_keel_pro_placeholder".to_string()
         }),
+        create_secret: std::env::var("KEEL_CREATE_SECRET").ok().filter(|s| !s.is_empty()),
     })
     .layer(CorsLayer::permissive())
     .layer(TraceLayer::new_for_http());

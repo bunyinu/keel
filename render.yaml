@@ -18,6 +18,8 @@ services:
         sync: false
       - key: KEEL_UPGRADE_CODES
         sync: false
+      - key: KEEL_CREATE_SECRET
+        sync: false
     disk:
       name: keel-data
       mountPath: /data
