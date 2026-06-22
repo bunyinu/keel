@@ -281,15 +281,31 @@ fn dashboard_page(template: &str, id: &str) -> Result<Html<String>, StatusCode> 
     ))
 }
 
-async fn home(axum::extract::State(state): axum::extract::State<AppState>) -> Html<String> {
-    let mut html = include_str!("../../web/index.html").to_string();
-    let secret = state
-        .create_secret
-        .as_deref()
-        .map(html_escape)
-        .unwrap_or_default();
-    html = html.replace("__KEEL_CREATE_SECRET__", &secret);
-    Html(html)
+async fn home() -> Html<&'static str> {
+    Html(include_str!("../../web/index.html"))
+}
+
+async fn login_page() -> Html<&'static str> {
+    Html(include_str!("../../web/login.html"))
+}
+
+async fn new_page(axum::extract::State(state): axum::extract::State<AppState>) -> Html<String> {
+    Html(inject_create_secret(
+        include_str!("../../web/new.html"),
+        state.create_secret.as_deref(),
+    ))
+}
+
+fn inject_create_secret(html: &str, secret: Option<&str>) -> String {
+    let secret = secret.map(html_escape).unwrap_or_default();
+    html.replace("__KEEL_CREATE_SECRET__", &secret)
+}
+
+async fn site_css() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
+        include_str!("../../web/site.css"),
+    )
 }
 
 async fn trust_page() -> Html<&'static str> {
@@ -322,6 +338,9 @@ fn html_escape(s: &str) -> String {
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", get(home))
+        .route("/login", get(login_page))
+        .route("/new", get(new_page))
+        .route("/site.css", get(site_css))
         .route("/demo.gif", get(demo_gif))
         .route("/trust", get(trust_page))
         .route("/pricing", get(pricing_page))

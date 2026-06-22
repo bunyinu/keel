@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Keel — Sign in</title>
+  <link rel="stylesheet" href="/site.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="logo" href="/">Keel</a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/new">New project</a>
+      <a href="/login" class="active">Sign in</a>
+      <a href="/pricing">Pricing</a>
+      <a href="/trust">Trust</a>
+    </nav>
+  </header>
+
+  <main class="page page-narrow">
+    <h1>Sign in</h1>
+    <p class="lead">Open your project dashboard with the API key from when you created the project.</p>
+
+    <div class="auth-box card">
+      <label for="project_id">Project ID</label>
+      <input id="project_id" type="text" placeholder="e.g. a1b2c3d4-…" autocomplete="off" />
+
+      <label for="api_key">API key</label>
+      <input id="api_key" type="password" placeholder="keel_…" autocomplete="off" />
+
+      <button type="button" class="btn primary" id="signin" style="margin-top:1.25rem;width:100%">Sign in</button>
+      <p id="status" class="muted" style="margin-top:1rem"></p>
+    </div>
+
+    <div class="auth-help muted">
+      <p><strong>No API key?</strong> It was shown once when you <a href="/new">created the project</a>. If you lost it, create a new project — keys cannot be recovered.</p>
+      <p><strong>Have a dashboard link?</strong> Paste the project ID from the URL (<code>/dashboard/…</code>) above.</p>
+    </div>
+  </main>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const projectInput = document.getElementById("project_id");
+    const keyInput = document.getElementById("api_key");
+    const status = document.getElementById("status");
+    const next = params.get("next") || "";
+
+    projectInput.value = params.get("project") || "";
+    const savedId = projectInput.value;
+    if (savedId) {
+      const k = localStorage.getItem("keel_api_key_" + savedId);
+      if (k) keyInput.value = k;
+    }
+
+    async function signIn() {
+      const id = projectInput.value.trim();
+      const key = keyInput.value.trim();
+      status.textContent = "";
+      status.className = "muted";
+      if (!id) { status.textContent = "Enter your project ID"; status.className = "err"; return; }
+      if (!key) { status.textContent = "Enter your API key"; status.className = "err"; return; }
+      status.textContent = "Checking…";
+      const res = await fetch("/api/projects/" + encodeURIComponent(id), {
+        headers: { Authorization: "Bearer " + key },
+      });
+      if (!res.ok) {
+        status.textContent = res.status === 404
+          ? "Project not found — check the project ID"
+          : "Invalid API key for this project";
+        status.className = "err";
+        return;
+      }
+      localStorage.setItem("keel_api_key_" + id, key);
+      const data = await res.json();
+      localStorage.setItem("keel_project", JSON.stringify({
+        id, key, url: location.origin, name: data.name || ""
+      }));
+      location.href = next || ("/dashboard/" + encodeURIComponent(id));
+    }
+
+    document.getElementById("signin").onclick = signIn;
+    keyInput.addEventListener("keydown", (e) => { if (e.key === "Enter") signIn(); });
+    projectInput.addEventListener("keydown", (e) => { if (e.key === "Enter") signIn(); });
+  </script>
+</body>
+</html>

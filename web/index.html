@@ -4,162 +4,44 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Keel — Agent state that survives compaction</title>
-  <style>
-    :root {
-      font-family: system-ui, -apple-system, sans-serif;
-      background: #0b0f14;
-      color: #e8eef7;
-      line-height: 1.5;
-    }
-    body { max-width: 720px; margin: 0 auto; padding: 2.5rem 1.25rem; }
-    h1 { font-size: 1.75rem; font-weight: 600; margin: 0 0 .5rem; }
-    .tagline { color: #8fa3bf; margin-bottom: 1rem; }
-    .demo { margin: 1.5rem 0 2rem; }
-    .demo img { width: 100%; border-radius: 10px; border: 1px solid #2a3548; }
-    .demo figcaption { color: #8fa3bf; font-size: .9rem; margin-top: .5rem; }
-    label { display: block; font-size: .85rem; color: #8fa3bf; margin-bottom: .35rem; }
-    input {
-      width: 100%; box-sizing: border-box; padding: .65rem .75rem;
-      border: 1px solid #2a3548; border-radius: 8px; background: #141c28; color: #e8eef7;
-      font-size: 1rem; margin-bottom: 1rem;
-    }
-    button {
-      background: #3d7eff; color: #fff; border: none; border-radius: 8px;
-      padding: .7rem 1.25rem; font-size: 1rem; cursor: pointer; font-weight: 500;
-    }
-    button:hover { background: #2f6ae8; }
-    button:disabled { opacity: .5; cursor: not-allowed; }
-    .result { display: none; margin-top: 2rem; }
-    .result.show { display: block; }
-    .card {
-      background: #141c28; border: 1px solid #2a3548; border-radius: 10px;
-      padding: 1.25rem; margin-top: 1rem;
-    }
-    pre {
-      background: #0b0f14; padding: 1rem; border-radius: 8px; overflow-x: auto;
-      font-size: .85rem; white-space: pre-wrap; word-break: break-all;
-    }
-    .warn { color: #f0b429; font-size: .9rem; margin-top: .5rem; }
-    .steps { margin-top: 2rem; color: #8fa3bf; font-size: .95rem; }
-    .steps ol { padding-left: 1.25rem; }
-    .steps li { margin: .5rem 0; }
-    code { background: #1e2a3d; padding: .1rem .35rem; border-radius: 4px; font-size: .9em; }
-  </style>
+  <link rel="stylesheet" href="/site.css" />
 </head>
 <body>
-  <h1>Keel</h1>
-  <p class="tagline">Agent state for Claude Code, Codex &amp; Cursor — survives compaction, works across tools.</p>
-  <p class="tagline"><a href="/pricing" style="color:#6cb6ff">Free: 1 project · Team: $15/mo →</a> · <a href="/trust" style="color:#6cb6ff">Trust</a></p>
+  <header class="site-header">
+    <a class="logo" href="/">Keel</a>
+    <nav>
+      <a href="/" class="active">Home</a>
+      <a href="/new">New project</a>
+      <a href="/login">Sign in</a>
+      <a href="/pricing">Pricing</a>
+      <a href="/trust">Trust</a>
+    </nav>
+  </header>
 
-  <figure class="demo">
-    <img src="/demo.gif" alt="Compaction demo: with Keel port 8842 survives, without Keel defaults to 3000" width="720" height="400" loading="lazy" />
-    <figcaption>Same task, forced <code>/compact</code>: with Keel the repo goal survives; without it the agent guesses (port 8842 vs 3000).</figcaption>
-  </figure>
+  <main class="page">
+    <h1>Agent state that survives compaction</h1>
+    <p class="lead">Keel keeps your goal, acceptance criteria, and progress in <code>.keel/</code> inside your repo — restored automatically after Claude Code, Codex, or Cursor compacts the session.</p>
 
-  <label for="name">Project name</label>
-  <input id="name" type="text" placeholder="my-app" autocomplete="off" />
-  <label for="team-license">Team license (optional — for additional projects on Pro)</label>
-  <input id="team-license" type="text" placeholder="keel_team_... (saved after first project)" autocomplete="off" />
-  <button id="create">Create project</button>
-
-  <div id="result" class="result">
-    <div class="card">
-      <strong>Save your API key now</strong>
-      <p class="warn">Shown once. Store it somewhere safe.</p>
-      <pre id="api-key"></pre>
-      <p>Project ID: <code id="project-id"></code></p>
-      <p>Plan: <code id="plan"></code> · Team license: <code id="team-license-out"></code></p>
+    <div class="cta-row">
+      <a class="btn primary" href="/new">Create a project</a>
+      <a class="btn secondary" href="/login">Sign in to dashboard</a>
     </div>
-    <div class="card">
-      <strong>Connect your machine</strong>
-      <pre id="commands"></pre>
-    </div>
-    <p><a id="dashboard-link" href="#">Open dashboard →</a></p>
-  </div>
 
-  <div class="steps">
-    <strong>How it works</strong>
-    <ol>
-      <li>Create a project above — get an API key</li>
-      <li>Install CLI: <code>npm install -g @keel-agent/cli</code></li>
-      <li>In your repo: <code>keel onboard "your task" --accept "tests pass"</code></li>
-      <li>Optional cloud: <code>keel cloud link</code> then push/pull</li>
-      <li>Use Claude Code, Codex, or Cursor — state syncs after compact</li>
-    </ol>
-  </div>
+    <figure class="demo">
+      <img src="/demo.gif" alt="Compaction demo: with Keel port 8842 survives, without Keel defaults to 3000" width="720" height="400" loading="lazy" />
+      <figcaption>Same task, forced <code>/compact</code>: with Keel the repo goal survives; without it the agent guesses.</figcaption>
+    </figure>
 
-  <script>
-    window.KEEL_CREATE_SECRET = "__KEEL_CREATE_SECRET__";
-    const $ = (id) => document.getElementById(id);
-    const createSecret = window.KEEL_CREATE_SECRET || "";
-    $("create").onclick = async () => {
-      const name = $("name").value.trim();
-      const team_license = $("team-license").value.trim();
-      if (!name) return alert("Enter a project name");
-      $("create").disabled = true;
-      try {
-        const body = { name };
-        if (team_license) body.team_license = team_license;
-        const headers = { "Content-Type": "application/json" };
-        if (createSecret) headers["X-Keel-Create-Secret"] = createSecret;
-        const res = await fetch("/api/projects", {
-          method: "POST",
-          headers,
-          body: JSON.stringify(body),
-        });
-        const raw = await res.text();
-        let data = {};
-        try { data = raw ? JSON.parse(raw) : {}; } catch (_) {}
-        if (res.status === 402) {
-          alert((data.error || "Project limit reached") + "\n\nUpgrade at " + (data.upgrade_url || "/pricing"));
-          window.location.href = data.upgrade_url || "/pricing";
-          return;
-        }
-        if (!res.ok) {
-          throw new Error(data.error || raw || `Request failed (${res.status})`);
-        }
-        const base = location.origin;
-        $("api-key").textContent = data.api_key;
-        $("project-id").textContent = data.id;
-        $("plan").textContent = data.plan + " (" + data.projects_used + "/" + data.projects_max + ")";
-        $("team-license-out").textContent = data.team_license;
-        $("team-license").value = data.team_license;
-        localStorage.setItem("keel_team", JSON.stringify({
-          license: data.team_license, id: data.team_id, plan: data.plan
-        }));
-        $("commands").textContent =
-          `npm install -g @keel-agent/cli\n` +
-          `keel update\n` +
-          `keel cloud link --url ${base} --project ${data.id} --key ${data.api_key}\n` +
-          `cd your-repo && keel onboard "your task" --accept "tests pass"`;
-        $("dashboard-link").href = data.dashboard_url;
-        $("result").classList.add("show");
-        localStorage.setItem("keel_api_key_" + data.id, data.api_key);
-        localStorage.setItem("keel_project", JSON.stringify({ id: data.id, key: data.api_key, url: base, name }));
-      } catch (e) {
-        alert("Failed: " + e.message);
-      } finally {
-        $("create").disabled = false;
-      }
-    };
-    const savedTeam = localStorage.getItem("keel_team");
-    if (savedTeam) {
-      try { $("team-license").value = JSON.parse(savedTeam).license || ""; } catch (_) {}
-    }
-    const saved = localStorage.getItem("keel_project");
-    if (saved) {
-      try {
-        const p = JSON.parse(saved);
-        $("name").value = p.name || "";
-        $("project-id").textContent = p.id;
-        $("api-key").textContent = p.key;
-        $("commands").textContent =
-          `keel cloud link --url ${p.url} --project ${p.id} --key ${p.key}`;
-        $("dashboard-link").href = `/dashboard/${p.id}`;
-        $("result").classList.add("show");
-        if (p.id && p.key) localStorage.setItem("keel_api_key_" + p.id, p.key);
-      } catch (_) {}
-    }
-  </script>
+    <section class="steps">
+      <h2>How it works</h2>
+      <ol>
+        <li><a href="/new">Create a project</a> on Keel Cloud — save your API key.</li>
+        <li>Install CLI: <code>npm install -g @keel-agent/cli</code></li>
+        <li>In your repo: <code>keel onboard "your task" --accept "tests pass"</code></li>
+        <li>Optional: <code>keel cloud link</code> to sync across machines.</li>
+        <li>Use your agent — state survives compaction.</li>
+      </ol>
+    </section>
+  </main>
 </body>
 </html>

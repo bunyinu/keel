@@ -4,91 +4,80 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Keel — Edit goal</title>
-  <style>
-    :root { font-family: system-ui, sans-serif; background: #0f1419; color: #e7ecf3; }
-    body { max-width: 720px; margin: 0 auto; padding: 2rem 1rem; }
-    h1 { font-size: 1.5rem; }
-    label { display: block; margin: 1rem 0 .35rem; font-weight: 600; }
-    input, textarea {
-      width: 100%; box-sizing: border-box; background: #1a2332; color: #e7ecf3;
-      border: 1px solid #2d3a4f; border-radius: 6px; padding: .6rem; font: inherit;
-    }
-    textarea { min-height: 5rem; resize: vertical; }
-    .row { display: flex; gap: .75rem; margin-top: 1.25rem; flex-wrap: wrap; }
-    button, a.btn {
-      background: #3d7dd6; color: #fff; border: none; border-radius: 6px;
-      padding: .6rem 1rem; font: inherit; cursor: pointer; text-decoration: none; display: inline-block;
-    }
-    a.btn.secondary { background: #243044; color: #e7ecf3; }
-    #status { margin-top: 1rem; color: #8b9bb4; }
-    .err { color: #ff8a8a; }
-    .ok { color: #7dcea0; }
-    .warn { color: #f0b429; font-size: .9rem; }
-    code { background: #243044; padding: .15rem .4rem; border-radius: 4px; }
-    #editor { display: none; }
-  </style>
+  <link rel="stylesheet" href="/site.css" />
 </head>
 <body>
-  <p class="warn">API key required — the project link alone is not enough to view or edit.</p>
-  <label for="api_key">API key</label>
-  <input id="api_key" type="password" placeholder="keel_…" autocomplete="off" />
-  <div id="editor">
+  <header class="site-header">
+    <a class="logo" href="/">Keel</a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/new">New project</a>
+      <a href="/login">Sign in</a>
+      <a href="/pricing">Pricing</a>
+      <a href="/trust">Trust</a>
+    </nav>
+  </header>
+
+  <main class="page page-narrow" id="editor" style="display:none">
     <h1 id="heading">Edit goal</h1>
-    <p>Project <code>__PROJECT_ID__</code></p>
+    <p class="dashboard-meta">Project <code>__PROJECT_ID__</code></p>
     <label for="title">Goal</label>
     <input id="title" type="text" placeholder="What are you building?" />
     <label for="step">Current step</label>
     <input id="step" type="text" placeholder="Optional" />
-    <label for="acceptance">Acceptance criteria (one per line)</label>
+    <label for="acceptance">Acceptance criteria <span class="muted">(one per line)</span></label>
     <textarea id="acceptance"></textarea>
-    <label for="constraints">Constraints (one per line)</label>
+    <label for="constraints">Constraints <span class="muted">(one per line)</span></label>
     <textarea id="constraints"></textarea>
-    <div class="row">
-      <button type="button" id="save">Save goal</button>
-      <a class="btn secondary" href="/dashboard/__PROJECT_ID__">View dashboard</a>
+    <div class="cta-row">
+      <button type="button" class="btn primary" id="save">Save goal</button>
+      <a class="btn secondary" href="/dashboard/__PROJECT_ID__">Back to dashboard</a>
     </div>
-  </div>
-  <p id="status"></p>
+    <p id="status" class="muted"></p>
+  </main>
+
+  <p id="loading" class="page muted">Loading…</p>
+
   <script>
     const projectId = "__PROJECT_ID__";
-    const keyInput = document.getElementById("api_key");
-    const status = document.getElementById("status");
-    const editor = document.getElementById("editor");
     const storageKey = "keel_api_key_" + projectId;
-    keyInput.value = localStorage.getItem(storageKey) || "";
+    const loginUrl = "/login?project=" + encodeURIComponent(projectId) +
+      "&next=" + encodeURIComponent("/dashboard/" + projectId + "/edit");
+    const status = document.getElementById("status");
 
     function lines(id) {
       return document.getElementById(id).value.split("\n").map(s => s.trim()).filter(Boolean);
     }
 
     async function loadGoal() {
-      const key = keyInput.value.trim();
-      if (!key) { status.textContent = "Enter API key to load goal"; status.className = "err"; return; }
+      const key = localStorage.getItem(storageKey);
+      if (!key) { location.replace(loginUrl); return; }
       const res = await fetch("/api/projects/" + projectId, {
         headers: { Authorization: "Bearer " + key },
       });
-      if (!res.ok) {
-        status.textContent = "Invalid API key or access denied";
-        status.className = "err";
-        editor.style.display = "none";
+      if (res.status === 401 || res.status === 403) {
+        localStorage.removeItem(storageKey);
+        location.replace(loginUrl);
         return;
       }
-      localStorage.setItem(storageKey, key);
+      if (!res.ok) {
+        document.getElementById("loading").textContent = "Could not load project.";
+        return;
+      }
       const data = await res.json();
       const g = data.state?.goal || {};
+      document.getElementById("loading").style.display = "none";
+      document.getElementById("editor").style.display = "block";
       document.getElementById("heading").textContent = "Edit goal — " + (data.name || "project");
       document.getElementById("title").value = g.title || "";
       document.getElementById("step").value = data.state?.progress?.current_step || "";
       document.getElementById("acceptance").value = (g.acceptance || []).join("\n");
       document.getElementById("constraints").value = (g.constraints || []).join("\n");
-      editor.style.display = "block";
-      status.textContent = "Loaded — changes require your API key to save";
-      status.className = "";
     }
 
     document.getElementById("save").onclick = async () => {
-      const key = keyInput.value.trim();
-      if (!key) { status.textContent = "API key required"; status.className = "err"; return; }
+      const key = localStorage.getItem(storageKey);
+      if (!key) { location.replace(loginUrl); return; }
       const body = {
         title: document.getElementById("title").value,
         step: document.getElementById("step").value,
@@ -110,11 +99,7 @@
       status.className = "ok";
     };
 
-    keyInput.addEventListener("change", loadGoal);
-    document.getElementById("api_key").addEventListener("keydown", (e) => {
-      if (e.key === "Enter") loadGoal();
-    });
-    if (keyInput.value) loadGoal();
+    loadGoal();
   </script>
 </body>
 </html>
