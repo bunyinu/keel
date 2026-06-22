@@ -11,7 +11,7 @@ use keel::paths::{find_project_root, utcnow};
 use keel::VERSION;
 
 #[derive(Parser)]
-#[command(name = "keel", version = VERSION, about = "Repo-local agent state for Claude Code and Codex")]
+#[command(name = "keel", version = VERSION, about = "Repo-local agent state for Claude Code, Codex, and Cursor")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -21,6 +21,16 @@ struct Cli {
 enum Commands {
     /// Initialize .keel and install hooks
     Init,
+    /// Init + set goal in one step (recommended)
+    Onboard {
+        title: String,
+        #[arg(long, num_args = 1..)]
+        accept: Vec<String>,
+        #[arg(long, num_args = 1..)]
+        constraint: Vec<String>,
+        #[arg(long)]
+        step: Option<String>,
+    },
     /// Manage active goal
     Goal {
         #[command(subcommand)]
@@ -52,6 +62,15 @@ enum Commands {
     Update,
     /// Diagnose installation, hooks, and project setup
     Doctor,
+    /// CI / workflow gate: goal present + acceptance command (if enabled)
+    Check {
+        /// Skip active-goal requirement
+        #[arg(long)]
+        no_require_goal: bool,
+        /// Verify Keel Cloud link responds
+        #[arg(long)]
+        cloud: bool,
+    },
     /// Keel configuration
     Config {
         #[command(subcommand)]
@@ -120,6 +139,12 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Commands::Init => cmd_init(),
+        Commands::Onboard {
+            title,
+            accept,
+            constraint,
+            step,
+        } => keel::onboard::run_onboard(&title, accept, constraint, step, None),
         Commands::Goal { cmd } => match cmd {
             GoalCmd::Set {
                 title,
@@ -136,6 +161,10 @@ fn main() -> Result<()> {
         Commands::Tui => keel::tui::run_tui(),
         Commands::Update => cmd_update(),
         Commands::Doctor => cmd_doctor(),
+        Commands::Check {
+            no_require_goal,
+            cloud,
+        } => cmd_check(no_require_goal, cloud),
         Commands::Config { cmd } => match cmd {
             ConfigCmd::Show => cmd_config_show(),
             ConfigCmd::Set { acceptance } => cmd_config_set(acceptance),
@@ -194,6 +223,18 @@ fn cmd_doctor() -> Result<()> {
     Ok(())
 }
 
+fn cmd_check(no_require_goal: bool, cloud: bool) -> Result<()> {
+    keel::check::run_check(
+        keel::check::CheckOptions {
+            require_goal: !no_require_goal,
+            verify_cloud: cloud,
+        },
+        None,
+    )?;
+    println!("Keel check: passed");
+    Ok(())
+}
+
 fn cmd_config_show() -> Result<()> {
     let config = load_config(None)?;
     println!("{}", serde_json::to_string_pretty(&config)?);
@@ -223,9 +264,9 @@ fn cmd_config_set(acceptance: Option<String>) -> Result<()> {
 fn cmd_init() -> Result<()> {
     let root = install(None)?;
     println!("Keel v{VERSION} initialized in {}", root.join(".keel").display());
-    println!("Hooks installed for Claude Code and Codex (native binary)");
-    println!("Next: keel goal set \"your task\" --accept \"criterion 1\"");
-    println!("     or: keel tui");
+    println!("Hooks installed for Claude Code, Codex, and Cursor");
+    println!("Next: keel onboard \"your task\" --accept \"criterion 1\"");
+    println!("     or: keel goal set \"...\" / keel tui");
     Ok(())
 }
 
@@ -341,8 +382,21 @@ fn cmd_cloud_link(url: &str, project: &str, key: &str) -> Result<()> {
         project_id: project.to_string(),
         api_key: key.to_string(),
     }, None)?;
+    let local_before = load_state(None)?;
     pull_state(None)?;
-    println!("Linked to Keel Cloud project {project}");
+    let pulled = load_state(None)?;
+    // New cloud projects start with `{}` — do not wipe an existing local goal.
+    if local_before.goal.is_some() && pulled.goal.is_none() {
+        let mut restored = local_before;
+        save_state(&mut restored, None)?;
+        write_snapshot(None)?;
+        push_state(None)?;
+        println!("Linked to Keel Cloud project {project}");
+        println!("Uploaded local state (cloud project was empty).");
+    } else {
+        println!("Linked to Keel Cloud project {project}");
+        println!("Pulled state from cloud.");
+    }
     println!("URL: {}", url.trim_end_matches('/'));
     Ok(())
 }

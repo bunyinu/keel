@@ -1,4 +1,4 @@
-# Keel v0.2
+# Keel v0.3
 
 **Repo-local agent state for Claude Code and Codex — written in Rust.**
 
@@ -40,12 +40,22 @@ keel goal set "My task" --accept "tests pass"
 
 **Live:** https://keel-cloud.onrender.com · **Pricing:** https://keel-cloud.onrender.com/pricing
 
-| Plan | Price | Projects |
-|------|-------|----------|
-| **Free** | $0 | 1 cloud project |
-| **Pro** | $15/mo | 50 projects + team dashboard |
+| Plan | Price | What you sell |
+|------|-------|----------------|
+| **Free** | $0 | 1 repo on cloud + full local CLI |
+| **Team** | $15/mo | Fleet dashboard + 50 repos + `keel check` in CI |
 
-Pro activation: pay via Stripe link on `/pricing`, then redeem upgrade code with your team license.
+Pro activation: pay via Stripe on `/pricing`, then redeem upgrade code with your team license.
+
+### What you’re selling (one sentence)
+
+> **Keel Team is the control plane for AI agents in your repos** — see every goal, gate merges with `keel check`, same guardrails in Claude and Codex.
+
+**Buyer:** eng lead / small team (3–15 devs) using Claude Code or Codex on multiple repos.  
+**Pain:** agents forget goals after compaction, skip tests, install deps, no visibility across repos.  
+**Proof:** `keel check` fails CI until goal + tests pass; fleet dashboard shows which repo is stuck.
+
+Example CI workflow: [`examples/github-keel-check.yml`](examples/github-keel-check.yml)
 
 1. Open **https://keel-cloud.onrender.com** → create a project → copy your API key
 2. In your repo:
@@ -74,7 +84,10 @@ After editing on the web: `keel cloud pull` in your repo.
 
 ```bash
 keel init
+keel onboard "My task" --accept "tests pass"   # recommended: init + goal
 keel doctor                       # diagnose setup
+keel check                        # CI: goal + acceptance gate (if enabled)
+keel check --cloud                # also verify cloud link
 keel update                       # npm users: upgrade to latest
 keel goal set / show
 keel tui
@@ -109,6 +122,52 @@ Constraints are matched from `keel goal set --constraint "..."`. Examples:
 2. **Cross-tool** — same `.keel/` for Claude Code and Codex
 3. **Loop breaker** — blocks repeated failed Bash/edit attempts
 4. **Failure detection** — reads `exit_code`, `stderr`, `tool_result.is_error`
+
+## Keel vs Claude Tasks API vs Agentpack
+
+Nobody ships *exactly* Keel as a first-party product. These are the closest alternatives today.
+
+| | **Keel** | **Claude Code Tasks API** | **[Agentpack](https://github.com/ihorponom/agentpack)** |
+|---|----------|---------------------------|----------------------------------------------------------|
+| **Who** | Third-party (you) | Anthropic (native) | Third-party OSS |
+| **Agents** | Claude Code + Codex + Cursor | Claude Code only | Any MCP client (Claude, Codex, Cursor, …) |
+| **Where state lives** | `.keel/` **in the repo** (git-committable) | `~/.claude/tasks/` (home dir) | `.agentpack/` (local; gitignored by default) |
+| **Who writes state** | You (`keel goal set`, TUI, web) + hooks | Agent (`TaskCreate` / `TaskUpdate`) | Agent via MCP tools + checkpoints |
+| **Survives compaction** | ✓ hooks inject `snapshot.md` | ✓ tasks on disk, agent queries `TaskList` | ✓ ledger + `load_context` / export |
+| **Multi-session sync** | ✓ git + optional Keel Cloud | ✓ `CLAUDE_CODE_TASK_LIST_ID` | ✓ shared ledger / handoff export |
+| **Acceptance criteria** | ✓ explicit in goal + optional **Stop gate** | ✗ task status only | ✓ evidence / decisions (no Stop gate) |
+| **Enforcement** | ✓ constraint guard, loop breaker, acceptance gate | ✗ reminders + task status (no tool blocks) | ✗ continuity layer (no tool blocks) |
+| **Install** | `npm install -g @keel-agent/cli` | Built into Claude Code v2.1.16+ | `pip` / MCP server |
+| **Hosted team UI** | ✓ Keel Cloud (free / Pro) | ✗ | ✗ |
+
+### When to use which
+
+- **Claude Code Tasks API** — you live in Claude only, want native task lists with dependencies and multi-terminal sync. Best default *inside* Claude Code since v2.1.19.
+- **Agentpack** — you want a rich task ledger (decisions, dead ends, evidence, file hashes) and already run MCP across multiple agents.
+- **Keel** — you want **repo-owned** goal state in git, the **same file** in Claude *and* Codex, **hard guardrails** (block deps, block stop until tests pass), and optional cloud/team dashboard without running an MCP server.
+
+Keel complements Tasks API and Agentpack; it does not replace Claude memory, `CLAUDE.md`, or a full ledger. Use Tasks or Agentpack for deep task graphs; use Keel when the team needs a shared, enforceable goal file in the repo.
+
+## Building workflow dependency (stickiness)
+
+Keel should not trap users — it should **accumulate value** so removing it hurts workflow, not data.
+
+| Layer | What compounds | Switching cost |
+|-------|----------------|----------------|
+| **Git** | Commit `.keel/state.json` + `snapshot.md` — goal becomes part of PR review | Team process references Keel goal in tickets/PRs |
+| **Hooks** | Constraint guard + loop breaker + Stop gate run every session | Agents behave differently without hooks |
+| **History** | `decisions`, `attempts.jsonl`, `changelog.jsonl` — “do not retry” list grows | Lose failure memory if you uninstall |
+| **Cloud** | Pro team links many repos; web goal editor | Re-link every repo + lose dashboard |
+| **CI** | `keel check` in GitHub Actions / pre-merge | Pipeline fails without Keel |
+
+**CI example** (add after `keel config set --acceptance "npm test"`):
+
+```yaml
+- name: Keel acceptance
+  run: keel check
+```
+
+`keel check` verifies: Keel initialized → active goal → acceptance command passes (same gate as agent Stop). Use `keel check --cloud` when linked to Keel Cloud.
 
 ## Layout
 

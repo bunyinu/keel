@@ -16,6 +16,7 @@ fn collapse_ws(s: &str) -> String {
 }
 
 pub fn normalize_action(tool: &str, tool_input: &Value) -> String {
+    let tool = crate::hooks::normalize_tool_name(tool);
     if tool == "Bash" {
         if let Some(cmd) = tool_input.get("command").and_then(|c| c.as_str()) {
             let cmd = collapse_ws(cmd);

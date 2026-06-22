@@ -13,7 +13,10 @@
     }
     body { max-width: 720px; margin: 0 auto; padding: 2.5rem 1.25rem; }
     h1 { font-size: 1.75rem; font-weight: 600; margin: 0 0 .5rem; }
-    .tagline { color: #8fa3bf; margin-bottom: 2rem; }
+    .tagline { color: #8fa3bf; margin-bottom: 1rem; }
+    .demo { margin: 1.5rem 0 2rem; }
+    .demo img { width: 100%; border-radius: 10px; border: 1px solid #2a3548; }
+    .demo figcaption { color: #8fa3bf; font-size: .9rem; margin-top: .5rem; }
     label { display: block; font-size: .85rem; color: #8fa3bf; margin-bottom: .35rem; }
     input {
       width: 100%; box-sizing: border-box; padding: .65rem .75rem;
@@ -45,8 +48,13 @@
 </head>
 <body>
   <h1>Keel</h1>
-  <p class="tagline">Agent state for Claude Code &amp; Codex — survives compaction, works across tools.</p>
-  <p class="tagline"><a href="/pricing" style="color:#6cb6ff">Free: 1 project · Pro: $15/mo for teams →</a></p>
+  <p class="tagline">Agent state for Claude Code, Codex &amp; Cursor — survives compaction, works across tools.</p>
+  <p class="tagline"><a href="/pricing" style="color:#6cb6ff">Free: 1 project · Team: $15/mo →</a> · <a href="/trust" style="color:#6cb6ff">Trust</a></p>
+
+  <figure class="demo">
+    <img src="/demo.gif" alt="Compaction demo: with Keel port 8842 survives, without Keel defaults to 3000" width="720" height="400" loading="lazy" />
+    <figcaption>Same task, forced <code>/compact</code>: with Keel the repo goal survives; without it the agent guesses (port 8842 vs 3000).</figcaption>
+  </figure>
 
   <label for="name">Project name</label>
   <input id="name" type="text" placeholder="my-app" autocomplete="off" />
@@ -74,8 +82,9 @@
     <ol>
       <li>Create a project above — get an API key</li>
       <li>Install CLI: <code>npm install -g @keel-agent/cli</code></li>
-      <li>Link repo: <code>keel cloud link</code> then <code>keel init</code></li>
-      <li>Use Claude Code or Codex — state syncs automatically</li>
+      <li>In your repo: <code>keel onboard "your task" --accept "tests pass"</code></li>
+      <li>Optional cloud: <code>keel cloud link</code> then push/pull</li>
+      <li>Use Claude Code, Codex, or Cursor — state syncs after compact</li>
     </ol>
   </div>
 
@@ -114,7 +123,7 @@
           `npm install -g @keel-agent/cli\n` +
           `keel update\n` +
           `keel cloud link --url ${base} --project ${data.id} --key ${data.api_key}\n` +
-          `cd your-repo && keel init`;
+          `cd your-repo && keel onboard "your task" --accept "tests pass"`;
         $("dashboard-link").href = data.dashboard_url;
         $("result").classList.add("show");
         localStorage.setItem("keel_project", JSON.stringify({ id: data.id, key: data.api_key, url: base, name }));

@@ -81,7 +81,7 @@ fn banned_tokens(constraints: &[String]) -> Vec<String> {
 }
 
 fn is_dep_install(tool: &str, text: &str) -> bool {
-    if tool != "Bash" {
+    if tool != "Bash" && tool != "Shell" {
         return false;
     }
     [
@@ -103,7 +103,7 @@ fn is_dep_install(tool: &str, text: &str) -> bool {
 fn is_write_tool(tool: &str) -> bool {
     matches!(
         tool,
-        "Write" | "Edit" | "ApplyPatch" | "apply_patch" | "NotebookEdit"
+        "Write" | "Edit" | "ApplyPatch" | "apply_patch" | "NotebookEdit" | "TabWrite" | "TabEdit"
     )
 }
 

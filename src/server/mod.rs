@@ -392,6 +392,17 @@ async fn home() -> Html<&'static str> {
     Html(include_str!("../../web/index.html"))
 }
 
+async fn trust_page() -> Html<&'static str> {
+    Html(include_str!("../../web/trust.html"))
+}
+
+async fn demo_gif() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "image/gif")],
+        include_bytes!("../../web/demo.gif").as_slice(),
+    )
+}
+
 fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -402,6 +413,8 @@ fn html_escape(s: &str) -> String {
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", get(home))
+        .route("/demo.gif", get(demo_gif))
+        .route("/trust", get(trust_page))
         .route("/pricing", get(pricing_page))
         .route("/team", get(team_page))
         .route("/health", get(health))

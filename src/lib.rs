@@ -1,4 +1,5 @@
 pub mod acceptance;
+pub mod check;
 pub mod cloud;
 pub mod constraints;
 pub mod doctor;
@@ -6,6 +7,7 @@ pub mod goal_edit;
 pub mod hooks;
 pub mod install;
 pub mod loop_breaker;
+pub mod onboard;
 pub mod paths;
 pub mod server;
 pub mod snapshot;

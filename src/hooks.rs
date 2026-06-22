@@ -13,6 +13,7 @@ use crate::state::{load_state, log_event, save_state, KeelState};
 pub enum Agent {
     Claude,
     Codex,
+    Cursor,
 }
 
 impl Agent {
@@ -20,6 +21,7 @@ impl Agent {
         match s {
             "claude" => Some(Self::Claude),
             "codex" => Some(Self::Codex),
+            "cursor" => Some(Self::Cursor),
             _ => None,
         }
     }
@@ -28,7 +30,17 @@ impl Agent {
         match self {
             Self::Claude => "claude",
             Self::Codex => "codex",
+            Self::Cursor => "cursor",
         }
+    }
+}
+
+/// Map Cursor tool names to the canonical names used by loop breaker / constraints.
+pub fn normalize_tool_name(tool: &str) -> &str {
+    match tool {
+        "Shell" => "Bash",
+        "TabWrite" | "TabEdit" => "Write",
+        _ => tool,
     }
 }
 
@@ -57,6 +69,23 @@ fn emit_codex_block(reason: &str) -> ! {
             }
         })
     );
+    exit(0);
+}
+
+fn emit_cursor_block(reason: &str) -> ! {
+    println!(
+        "{}",
+        json!({
+            "permission": "deny",
+            "user_message": reason,
+            "agent_message": reason,
+        })
+    );
+    exit(2);
+}
+
+fn emit_cursor_context(text: &str) -> ! {
+    println!("{}", json!({"additional_context": text}));
     exit(0);
 }
 
@@ -128,6 +157,16 @@ fn handle_pre_compact(agent: Agent) -> Result<()> {
                 ),
             })
         );
+    } else if agent == Agent::Cursor {
+        let ctx = snapshot_text()?;
+        println!(
+            "{}",
+            json!({
+                "agent_message": format!(
+                    "Keel task state to preserve through compaction:\n\n{ctx}"
+                ),
+            })
+        );
     }
     Ok(())
 }
@@ -137,10 +176,11 @@ fn handle_post_compact(agent: Agent) -> Result<()> {
     write_snapshot(None)?;
     log_event(None, "post_compact", json!({"agent": agent.as_str()}))?;
     let ctx = snapshot_text()?;
-    if agent == Agent::Codex {
-        emit_codex_context("PostCompact", &ctx);
+    match agent {
+        Agent::Codex => emit_codex_context("PostCompact", &ctx),
+        Agent::Cursor => emit_cursor_context(&ctx),
+        Agent::Claude => print!("{ctx}"),
     }
-    print!("{ctx}");
     Ok(())
 }
 
@@ -164,57 +204,65 @@ fn handle_session_start(agent: Agent) -> Result<()> {
         json!({"agent": agent.as_str(), "source": source}),
     )?;
     let ctx = snapshot_text()?;
-    if agent == Agent::Codex {
-        emit_codex_context("SessionStart", &ctx);
+    match agent {
+        Agent::Codex => emit_codex_context("SessionStart", &ctx),
+        Agent::Cursor => emit_cursor_context(&ctx),
+        Agent::Claude => print!("{ctx}"),
     }
-    print!("{ctx}");
     Ok(())
+}
+
+fn cursor_tool_input(payload: &Value) -> Value {
+    if let Some(input) = payload.get("tool_input").or(payload.get("input")) {
+        return input.clone();
+    }
+    // Cursor beforeShellExecution-style payloads
+    if let Some(cmd) = payload.get("command").and_then(|c| c.as_str()) {
+        return json!({"command": cmd});
+    }
+    json!({})
 }
 
 fn handle_pre_tool_use(agent: Agent) -> Result<()> {
     let payload = read_stdin_json()?;
-    let tool = payload
+    let raw_tool = payload
         .get("tool_name")
         .or(payload.get("tool"))
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
-    let tool_input = payload
-        .get("tool_input")
-        .or(payload.get("input"))
-        .cloned()
-        .unwrap_or(json!({}));
+    let tool = normalize_tool_name(raw_tool);
+    let tool_input = cursor_tool_input(&payload);
 
     let (block, reason) = check_pre_tool(None, agent.as_str(), tool, &tool_input)?;
     if block {
-        if agent == Agent::Codex {
-            emit_codex_block(&reason);
+        match agent {
+            Agent::Codex => emit_codex_block(&reason),
+            Agent::Cursor => emit_cursor_block(&reason),
+            Agent::Claude => emit_claude_block(&reason),
         }
-        emit_claude_block(&reason);
     }
 
     let (block, reason) = check_pre_tool_constraints(None, tool, &tool_input)?;
     if block {
         let _ = record_violation(None, &reason);
-        if agent == Agent::Codex {
-            emit_codex_block(&reason);
+        match agent {
+            Agent::Codex => emit_codex_block(&reason),
+            Agent::Cursor => emit_cursor_block(&reason),
+            Agent::Claude => emit_claude_block(&reason),
         }
-        emit_claude_block(&reason);
     }
     Ok(())
 }
 
 fn handle_post_tool_use(agent: Agent) -> Result<()> {
     let payload = read_stdin_json()?;
-    let tool = payload
+    let raw_tool = payload
         .get("tool_name")
         .or(payload.get("tool"))
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
-    let tool_input = payload
-        .get("tool_input")
-        .or(payload.get("input"))
-        .cloned()
-        .unwrap_or(json!({}));
+    let tool = normalize_tool_name(raw_tool);
+    let tool_input = cursor_tool_input(&payload);
 
     let (ok, _, _) = crate::loop_breaker::detect_tool_failure(&payload);
     record_tool_result(None, agent.as_str(), tool, &tool_input, &payload)?;
@@ -230,24 +278,38 @@ fn handle_stop(agent: Agent) -> Result<()> {
     if ok {
         return Ok(());
     }
-    if agent == Agent::Codex {
-        println!(
-            "{}",
-            json!({
-                "continue": false,
-                "systemMessage": reason,
-            })
-        );
-        exit(0);
+    match agent {
+        Agent::Codex => {
+            println!(
+                "{}",
+                json!({
+                    "continue": false,
+                    "systemMessage": reason,
+                })
+            );
+            exit(0);
+        }
+        Agent::Cursor => {
+            println!(
+                "{}",
+                json!({
+                    "followup_message": reason,
+                    "agent_message": reason,
+                })
+            );
+            exit(2);
+        }
+        Agent::Claude => {
+            println!(
+                "{}",
+                json!({
+                    "continue": false,
+                    "systemMessage": reason,
+                })
+            );
+            exit(2);
+        }
     }
-    println!(
-        "{}",
-        json!({
-            "continue": false,
-            "systemMessage": reason,
-        })
-    );
-    exit(2);
 }
 
 fn handle_user_prompt_submit(agent: Agent) -> Result<()> {
@@ -264,9 +326,10 @@ fn handle_user_prompt_submit(agent: Agent) -> Result<()> {
     )?;
     let ctx = "Keel: If you lost context, read `.keel/snapshot.md` before acting. \
                Do not repeat approaches listed under Do NOT retry.";
-    if agent == Agent::Codex {
-        emit_codex_context("UserPromptSubmit", ctx);
+    match agent {
+        Agent::Codex => emit_codex_context("UserPromptSubmit", ctx),
+        Agent::Cursor => emit_cursor_context(ctx),
+        Agent::Claude => println!("{ctx}"),
     }
-    println!("{ctx}");
     Ok(())
 }

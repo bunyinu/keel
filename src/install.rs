@@ -153,6 +153,75 @@ fn codex_hooks() -> Value {
     })
 }
 
+fn cursor_hooks() -> Value {
+    json!({
+        "preCompact": [{
+            "command": hook_cmd("pre-compact", "cursor"),
+            "timeout": 15
+        }],
+        "sessionStart": [{
+            "command": hook_cmd("session-start", "cursor"),
+            "timeout": 15
+        }],
+        "preToolUse": [{
+            "command": hook_cmd("pre-tool-use", "cursor"),
+            "timeout": 10,
+            "matcher": "Shell|Write|Edit"
+        }],
+        "postToolUse": [{
+            "command": hook_cmd("post-tool-use", "cursor"),
+            "timeout": 10,
+            "matcher": "Shell|Write|Edit"
+        }],
+        "beforeSubmitPrompt": [{
+            "command": hook_cmd("user-prompt-submit", "cursor"),
+            "timeout": 5
+        }],
+        "stop": [{
+            "command": hook_cmd("stop", "cursor"),
+            "timeout": 120,
+            "failClosed": true
+        }]
+    })
+}
+
+/// Cursor uses `{ "version": 1, "hooks": { "event": [ { "command": ... } ] } }`.
+fn merge_cursor_hooks(existing: &mut Value, new_hooks: &Value) {
+    if !existing.is_object() {
+        *existing = json!({"version": 1, "hooks": {}});
+    }
+    let obj = existing.as_object_mut().unwrap();
+    obj.entry("version").or_insert(json!(1));
+    let hooks = obj
+        .entry("hooks")
+        .or_insert(json!({}))
+        .as_object_mut()
+        .unwrap();
+    let Some(new_obj) = new_hooks.as_object() else {
+        return;
+    };
+
+    for (event, entries) in new_obj {
+        let current = hooks
+            .entry(event.clone())
+            .or_insert(json!([]))
+            .as_array_mut()
+            .unwrap();
+        current.retain(|entry| {
+            !entry
+                .get("command")
+                .and_then(|c| c.as_str())
+                .map(|c| c.contains("keel hook"))
+                .unwrap_or(false)
+        });
+        if let Some(arr) = entries.as_array() {
+            for entry in arr {
+                current.push(entry.clone());
+            }
+        }
+    }
+}
+
 fn merge_hooks(existing: &mut Value, new_hooks: &Value) {
     let hooks = existing
         .as_object_mut()
@@ -256,6 +325,23 @@ pub fn install(project: Option<&Path>) -> Result<PathBuf> {
     merge_hooks(&mut codex_doc, &codex_hooks());
     fs::write(&hooks_path, serde_json::to_string_pretty(&codex_doc)? + "\n")?;
 
+    let cursor_dir = root.join(".cursor");
+    fs::create_dir_all(&cursor_dir)?;
+    let cursor_hooks_path = cursor_dir.join("hooks.json");
+    let mut cursor_doc: Value = if cursor_hooks_path.exists() {
+        serde_json::from_str(&fs::read_to_string(&cursor_hooks_path)?)?
+    } else {
+        json!({"version": 1, "hooks": {}})
+    };
+    if cursor_doc.get("hooks").is_none() {
+        cursor_doc["hooks"] = json!({});
+    }
+    merge_cursor_hooks(&mut cursor_doc, &cursor_hooks());
+    fs::write(
+        &cursor_hooks_path,
+        serde_json::to_string_pretty(&cursor_doc)? + "\n",
+    )?;
+
     append_snippet(&root.join("CLAUDE.md"), CLAUDE_MD_SNIPPET, "## Keel")?;
     append_snippet(&root.join("AGENTS.md"), AGENTS_MD_SNIPPET, "## Keel")?;
     write_snapshot(Some(&root))?;
@@ -277,6 +363,7 @@ mod tests {
         assert!(root.join(".keel").is_dir());
         assert!(root.join(".claude/settings.json").exists());
         assert!(root.join(".codex/hooks.json").exists());
+        assert!(root.join(".cursor/hooks.json").exists());
         let settings: Value =
             serde_json::from_str(&std::fs::read_to_string(root.join(".claude/settings.json")).unwrap())
                 .unwrap();

@@ -1,0 +1,1 @@
+`server.js` already uses `PORT = 8842` and returns `{"greeting":"hello"}` on `GET /`. No fix needed — it matches the acceptance criteria and avoids the forbidden ports.

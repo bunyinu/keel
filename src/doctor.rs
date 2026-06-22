@@ -25,6 +25,8 @@ pub fn run_doctor() -> Result<Vec<Check>> {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let root = find_project_root(None);
     let keel_path = keel_dir(None);
+    let has_config = keel_path.join("config.json").exists();
+    let partial_keel = keel_path.is_dir() && !has_config;
 
     let home_keel = std::env::var_os("HOME")
         .map(PathBuf::from)
@@ -40,12 +42,17 @@ pub fn run_doctor() -> Result<Vec<Check>> {
         && !cwd.join(".git").exists();
 
     checks.push(Check {
-        ok: keel_path.join("config.json").exists(),
+        ok: has_config,
         label: ".keel initialized".into(),
-        detail: if keel_path.join("config.json").exists() {
+        detail: if has_config {
             format!("{}", keel_path.display())
+        } else if partial_keel {
+            format!(
+                "partial .keel at {} — run `keel onboard \"...\"` or `keel init`",
+                keel_path.display()
+            )
         } else {
-            "Run `keel init` in this project".into()
+            "Run `keel onboard \"your task\" --accept \"tests pass\"`".into()
         },
     });
 
@@ -90,6 +97,15 @@ pub fn run_doctor() -> Result<Vec<Check>> {
         detail: codex_detail,
     });
 
+    let cursor_hooks = root.join(".cursor/hooks.json");
+    let (cursor_ok, cursor_detail) = hooks_contain_keel_cursor(&cursor_hooks);
+    checks.push(Check {
+        ok: cursor_ok,
+        label: "Cursor hooks".into(),
+        detail: cursor_detail,
+    });
+
+    let hooks_installed = claude_ok || codex_ok || cursor_ok;
     let cloud_ok = keel_path.join("cloud.json").exists();
     checks.push(Check {
         ok: true,
@@ -102,14 +118,24 @@ pub fn run_doctor() -> Result<Vec<Check>> {
     });
 
     let state = load_state(None).ok();
+    let has_goal = state
+        .as_ref()
+        .and_then(|s| s.goal.as_ref())
+        .is_some_and(|g| !g.title.trim().is_empty());
     checks.push(Check {
-        ok: true,
+        ok: !hooks_installed || has_goal,
         label: "Active goal".into(),
-        detail: state
-            .as_ref()
-            .and_then(|s| s.goal.as_ref())
-            .map(|g| g.title.clone())
-            .unwrap_or_else(|| "optional — `keel goal set` or `keel tui`".into()),
+        detail: if has_goal {
+            state
+                .as_ref()
+                .and_then(|s| s.goal.as_ref())
+                .map(|g| g.title.clone())
+                .unwrap_or_default()
+        } else if hooks_installed {
+            "required when hooks are installed — run `keel onboard \"...\"`".into()
+        } else {
+            "optional — `keel onboard \"...\"` or `keel tui`".into()
+        },
     });
 
     let config = load_config(None).ok();
@@ -133,6 +159,21 @@ pub fn run_doctor() -> Result<Vec<Check>> {
     });
 
     Ok(checks)
+}
+
+fn hooks_contain_keel_cursor(path: &Path) -> (bool, String) {
+    if !path.exists() {
+        return (false, format!("missing {} — run `keel init`", path.display()));
+    }
+    let raw = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) => return (false, e.to_string()),
+    };
+    if raw.contains("keel hook") {
+        (true, path.display().to_string())
+    } else {
+        (false, "no keel hooks — run `keel init`".into())
+    }
 }
 
 fn hooks_contain_keel(path: &Path) -> (bool, String) {

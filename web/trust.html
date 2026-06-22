@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Keel — Trust &amp; security</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; background: #0b0f14; color: #e8eef7; line-height: 1.6; }
+    body { max-width: 720px; margin: 0 auto; padding: 2.5rem 1.25rem; }
+    h1 { font-size: 1.75rem; margin-bottom: .5rem; }
+    h2 { font-size: 1.15rem; margin-top: 2rem; }
+    p, li { color: #b8c5d9; }
+    a { color: #6cb6ff; }
+    code { background: #1e2a3d; padding: .1rem .35rem; border-radius: 4px; }
+    .muted { color: #8fa3bf; font-size: .95rem; }
+  </style>
+</head>
+<body>
+  <p class="muted"><a href="/">← Keel</a> · <a href="/pricing">Pricing</a></p>
+  <h1>Trust &amp; security</h1>
+  <p>Keel is repo-local agent state. Your goals live in <code>.keel/</code> in your repository — not in our training data.</p>
+
+  <h2>What we store</h2>
+  <ul>
+    <li><strong>Local (default):</strong> <code>state.json</code>, <code>snapshot.md</code>, hook logs — on your machine, in your repo.</li>
+    <li><strong>Keel Cloud (optional):</strong> If you run <code>keel cloud link</code>, we store your project state and snapshot to sync across machines. You control the API key.</li>
+  </ul>
+
+  <h2>What we do not do</h2>
+  <ul>
+    <li>We do not use your goals or snapshots to train models.</li>
+    <li>We do not run your code on our servers (except optional cloud sync API).</li>
+    <li>Hooks run as <strong>your user</strong> on your machine — same trust model as Claude Code / Cursor hooks.</li>
+  </ul>
+
+  <h2>Hooks &amp; enforcement</h2>
+  <p>Keel hooks can <strong>block</strong> tool use (dependency installs, edits in read-only mode) and <strong>block session end</strong> until an acceptance command passes. That is intentional — review <code>.claude/settings.json</code>, <code>.codex/hooks.json</code>, and <code>.cursor/hooks.json</code> after <code>keel init</code>.</p>
+
+  <h2>Data deletion</h2>
+  <ul>
+    <li><strong>Local:</strong> Delete <code>.keel/</code> and remove Keel hook entries from agent settings.</li>
+    <li><strong>Cloud:</strong> Delete the project from your dashboard or stop syncing; contact support for team account deletion.</li>
+  </ul>
+
+  <h2>Contact</h2>
+  <p>Security issues: open a private issue on <a href="https://github.com/keel-agent/keel">GitHub</a> or email the address on your invoice (Team plan).</p>
+
+  <p class="muted">Last updated: June 2026 · Keel v0.3</p>
+</body>
+</html>

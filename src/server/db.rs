@@ -35,6 +35,12 @@ pub struct ProjectSummary {
     pub name: String,
     pub updated_at: String,
     pub dashboard_url: String,
+    /// Active goal title from synced state (empty if unset).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub goal_title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_step: Option<String>,
+    pub compactions: u32,
 }
 
 static DB: OnceLock<Mutex<Connection>> = OnceLock::new();
@@ -255,15 +261,20 @@ pub fn create_project(name: &str, team_license: Option<&str>) -> Result<Project>
 pub fn list_team_projects(team_id: &str) -> Result<Vec<ProjectSummary>> {
     let c = conn()?;
     let mut stmt = c.prepare(
-        "SELECT id, name, updated_at FROM projects WHERE team_id = ?1 ORDER BY updated_at DESC",
+        "SELECT id, name, updated_at, state_json FROM projects WHERE team_id = ?1 ORDER BY updated_at DESC",
     )?;
     let rows = stmt.query_map(params![team_id], |row| {
         let id: String = row.get(0)?;
+        let state_json: String = row.get(3)?;
+        let (goal_title, current_step, compactions) = fleet_fields_from_state(&state_json);
         Ok(ProjectSummary {
             id: id.clone(),
             name: row.get(1)?,
             updated_at: row.get(2)?,
             dashboard_url: format!("/dashboard/{id}"),
+            goal_title,
+            current_step,
+            compactions,
         })
     })?;
     let mut out = Vec::new();
@@ -271,6 +282,27 @@ pub fn list_team_projects(team_id: &str) -> Result<Vec<ProjectSummary>> {
         out.push(r?);
     }
     Ok(out)
+}
+
+fn fleet_fields_from_state(state_json: &str) -> (Option<String>, Option<String>, u32) {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(state_json) else {
+        return (None, None, 0);
+    };
+    let goal_title = v
+        .pointer("/goal/title")
+        .and_then(|t| t.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let current_step = v
+        .pointer("/progress/current_step")
+        .and_then(|t| t.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let compactions = v
+        .get("compactions")
+        .and_then(|c| c.as_u64())
+        .unwrap_or(0) as u32;
+    (goal_title, current_step, compactions)
 }
 
 pub fn get_by_api_key(api_key: &str) -> Result<Option<Project>> {

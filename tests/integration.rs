@@ -191,6 +191,11 @@ fn doctor_passes_after_init() {
     let tmp = TempDir::new().unwrap();
     init_git_repo(tmp.path());
     bin().current_dir(tmp.path()).arg("init").assert().success();
+    bin()
+        .current_dir(tmp.path())
+        .args(["goal", "set", "My task"])
+        .assert()
+        .success();
 
     bin()
         .current_dir(tmp.path())

@@ -1,0 +1,1 @@
+`server.js` matches: `PORT = Number(process.env.PORT) || 3000`. Nothing to fix — 3000 is the default I chose, not a recovered requirement. The "correct port from project requirements" remains unknown, since no requirement source exists in this directory. If you have the intended port, give it and I'll set it.

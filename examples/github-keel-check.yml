@@ -1,0 +1,18 @@
+# Copy to .github/workflows/keel-check.yml
+# Requires: keel on PATH (npm install -g @keel-agent/cli) + keel init in repo
+name: Keel
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+jobs:
+  keel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install -g @keel-agent/cli
+      - run: keel check
