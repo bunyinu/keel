@@ -8,13 +8,13 @@ RUN cargo build --release --bin keel-server
 
 # Runtime stage
 FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates gosu && rm -rf /var/lib/apt/lists/*
 RUN useradd -m -u 1000 keel
 WORKDIR /app
 COPY --from=builder /app/target/release/keel-server /usr/local/bin/keel-server
-RUN mkdir -p /data && chown keel:keel /data
-USER keel
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh && mkdir -p /data && chown keel:keel /data
 ENV KEEL_DB_PATH=/data/keel.db
 ENV PORT=8080
 EXPOSE 8080
-CMD ["keel-server"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
