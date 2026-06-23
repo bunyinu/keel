@@ -11,7 +11,6 @@
     <a class="logo" href="/">Keel</a>
     <nav>
       <a href="/" class="active">Home</a>
-      <a href="/new">New project</a>
       <a href="/login">Sign in</a>
       <a href="/pricing">Pricing</a>
       <a href="/trust">Trust</a>
@@ -23,8 +22,8 @@
     <p class="lead">Keel keeps your goal, acceptance criteria, and progress in <code>.keel/</code> inside your repo — restored automatically after Claude Code, Codex, or Cursor compacts the session.</p>
 
     <div class="cta-row">
-      <a class="btn primary" href="/new">Create a project</a>
-      <a class="btn secondary" href="/login">Sign in to dashboard</a>
+      <a class="btn primary" href="/login?tab=create">Get started</a>
+      <a class="btn secondary" href="/login">Sign in</a>
     </div>
 
     <figure class="demo">
@@ -35,7 +34,7 @@
     <section class="steps">
       <h2>How it works</h2>
       <ol>
-        <li><a href="/new">Create a project</a> on Keel Cloud — save your API key.</li>
+        <li><a href="/login?tab=create">Create a project</a> on Keel Cloud — save your API key.</li>
         <li>Install CLI: <code>npm install -g @keel-agent/cli</code></li>
         <li>In your repo: <code>keel onboard "your task" --accept "tests pass"</code></li>
         <li>Optional: <code>keel cloud link</code> to sync across machines.</li>

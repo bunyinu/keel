@@ -285,15 +285,18 @@ async fn home() -> Html<&'static str> {
     Html(include_str!("../../web/index.html"))
 }
 
-async fn login_page() -> Html<&'static str> {
-    Html(include_str!("../../web/login.html"))
-}
-
-async fn new_page(axum::extract::State(state): axum::extract::State<AppState>) -> Html<String> {
+async fn login_page(axum::extract::State(state): axum::extract::State<AppState>) -> Html<String> {
     Html(inject_create_secret(
-        include_str!("../../web/new.html"),
+        include_str!("../../web/login.html"),
         state.create_secret.as_deref(),
     ))
+}
+
+async fn new_redirect() -> impl IntoResponse {
+    (
+        StatusCode::SEE_OTHER,
+        [(header::LOCATION, "/login?tab=create")],
+    )
 }
 
 fn inject_create_secret(html: &str, secret: Option<&str>) -> String {
@@ -339,7 +342,7 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", get(home))
         .route("/login", get(login_page))
-        .route("/new", get(new_page))
+        .route("/new", get(new_redirect))
         .route("/site.css", get(site_css))
         .route("/demo.gif", get(demo_gif))
         .route("/trust", get(trust_page))

@@ -5,13 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Keel — Sign in</title>
   <link rel="stylesheet" href="/site.css" />
+  <style>
+    .tabs { display: flex; gap: 0; margin: 1.5rem 0 0; border-bottom: 1px solid #2a3548; }
+    .tabs button {
+      background: none; border: none; color: #8fa3bf; padding: .75rem 1rem; cursor: pointer;
+      font: inherit; font-weight: 600; border-bottom: 2px solid transparent; margin-bottom: -1px;
+    }
+    .tabs button.active { color: #e8eef7; border-bottom-color: #3d7eff; }
+    .panel { display: none; margin-top: 1.25rem; }
+    .panel.active { display: block; }
+  </style>
 </head>
 <body>
   <header class="site-header">
     <a class="logo" href="/">Keel</a>
     <nav>
       <a href="/">Home</a>
-      <a href="/new">New project</a>
       <a href="/login" class="active">Sign in</a>
       <a href="/pricing">Pricing</a>
       <a href="/trust">Trust</a>
@@ -19,56 +28,101 @@
   </header>
 
   <main class="page page-narrow">
-    <h1>Sign in</h1>
-    <p class="lead">Open your project dashboard with the API key from when you created the project.</p>
+    <h1>Keel Cloud</h1>
+    <p class="lead">Create a project or sign in with your project ID and API key.</p>
 
-    <div class="auth-box card">
-      <label for="project_id">Project ID</label>
-      <input id="project_id" type="text" placeholder="e.g. a1b2c3d4-…" autocomplete="off" />
-
-      <label for="api_key">API key</label>
-      <input id="api_key" type="password" placeholder="keel_…" autocomplete="off" />
-
-      <button type="button" class="btn primary" id="signin" style="margin-top:1.25rem;width:100%">Sign in</button>
-      <p id="status" class="muted" style="margin-top:1rem"></p>
+    <div class="tabs" role="tablist">
+      <button type="button" id="tab-signin" class="active" role="tab">Sign in</button>
+      <button type="button" id="tab-create" role="tab">Create project</button>
     </div>
 
-    <div class="auth-help muted">
-      <p><strong>No API key?</strong> It was shown once when you <a href="/new">created the project</a>. If you lost it, create a new project — keys cannot be recovered.</p>
-      <p><strong>Have a dashboard link?</strong> Paste the project ID from the URL (<code>/dashboard/…</code>) above.</p>
-    </div>
+    <section id="panel-signin" class="panel active" role="tabpanel">
+      <div class="card">
+        <label for="project_id">Project ID</label>
+        <input id="project_id" type="text" placeholder="from your dashboard URL" autocomplete="off" />
+
+        <label for="api_key">API key</label>
+        <input id="api_key" type="password" placeholder="keel_…" autocomplete="off" />
+
+        <button type="button" class="btn primary" id="signin" style="margin-top:1.25rem;width:100%">Sign in</button>
+        <p id="signin-status" class="muted" style="margin-top:1rem"></p>
+      </div>
+      <p class="auth-help muted">Paste the project ID from <code>/dashboard/…</code>. Your API key was shown when you created the project.</p>
+    </section>
+
+    <section id="panel-create" class="panel" role="tabpanel">
+      <div class="card">
+        <label for="name">Project name</label>
+        <input id="name" type="text" placeholder="my-app" autocomplete="off" />
+
+        <label for="team-license">Team license <span class="muted">(optional)</span></label>
+        <input id="team-license" type="text" placeholder="keel_team_…" autocomplete="off" />
+
+        <button type="button" class="btn primary" id="create" style="margin-top:1rem;width:100%">Create project</button>
+        <p id="create-status" class="muted" style="margin-top:1rem"></p>
+      </div>
+      <p class="auth-help muted">You get an API key once — we sign you in automatically and open your dashboard.</p>
+
+      <div id="result" class="result">
+        <div class="card">
+          <strong>Save your API key</strong>
+          <p class="warn">Copy this somewhere safe. You need it to sign in on another browser.</p>
+          <pre id="api-key-out"></pre>
+          <p class="muted">Project ID: <code id="project-id-out"></code></p>
+        </div>
+        <div class="card">
+          <strong>Connect your machine</strong>
+          <pre id="commands"></pre>
+        </div>
+        <a class="btn primary" id="dashboard-link" href="#">Open dashboard</a>
+      </div>
+    </section>
   </main>
 
   <script>
+    window.KEEL_CREATE_SECRET = "__KEEL_CREATE_SECRET__";
     const params = new URLSearchParams(location.search);
+    const next = params.get("next") || "";
+    const createSecret = window.KEEL_CREATE_SECRET || "";
+
+    function showTab(name) {
+      const signin = name === "signin";
+      document.getElementById("tab-signin").classList.toggle("active", signin);
+      document.getElementById("tab-create").classList.toggle("active", !signin);
+      document.getElementById("panel-signin").classList.toggle("active", signin);
+      document.getElementById("panel-create").classList.toggle("active", !signin);
+      history.replaceState(null, "", signin ? "/login" : "/login?tab=create");
+    }
+
+    document.getElementById("tab-signin").onclick = () => showTab("signin");
+    document.getElementById("tab-create").onclick = () => showTab("create");
+    if (params.get("tab") === "create") showTab("create");
+
     const projectInput = document.getElementById("project_id");
     const keyInput = document.getElementById("api_key");
-    const status = document.getElementById("status");
-    const next = params.get("next") || "";
-
+    const signinStatus = document.getElementById("signin-status");
     projectInput.value = params.get("project") || "";
-    const savedId = projectInput.value;
-    if (savedId) {
-      const k = localStorage.getItem("keel_api_key_" + savedId);
+    if (projectInput.value) {
+      const k = localStorage.getItem("keel_api_key_" + projectInput.value);
       if (k) keyInput.value = k;
     }
 
     async function signIn() {
       const id = projectInput.value.trim();
       const key = keyInput.value.trim();
-      status.textContent = "";
-      status.className = "muted";
-      if (!id) { status.textContent = "Enter your project ID"; status.className = "err"; return; }
-      if (!key) { status.textContent = "Enter your API key"; status.className = "err"; return; }
-      status.textContent = "Checking…";
+      signinStatus.textContent = "";
+      signinStatus.className = "muted";
+      if (!id) { signinStatus.textContent = "Enter your project ID"; signinStatus.className = "err"; return; }
+      if (!key) { signinStatus.textContent = "Enter your API key"; signinStatus.className = "err"; return; }
+      signinStatus.textContent = "Checking…";
       const res = await fetch("/api/projects/" + encodeURIComponent(id), {
         headers: { Authorization: "Bearer " + key },
       });
       if (!res.ok) {
-        status.textContent = res.status === 404
+        signinStatus.textContent = res.status === 404
           ? "Project not found — check the project ID"
           : "Invalid API key for this project";
-        status.className = "err";
+        signinStatus.className = "err";
         return;
       }
       localStorage.setItem("keel_api_key_" + id, key);
@@ -82,6 +136,63 @@
     document.getElementById("signin").onclick = signIn;
     keyInput.addEventListener("keydown", (e) => { if (e.key === "Enter") signIn(); });
     projectInput.addEventListener("keydown", (e) => { if (e.key === "Enter") signIn(); });
+
+    const createStatus = document.getElementById("create-status");
+    document.getElementById("create").onclick = async () => {
+      const name = document.getElementById("name").value.trim();
+      const team_license = document.getElementById("team-license").value.trim();
+      createStatus.textContent = "";
+      createStatus.className = "muted";
+      if (!name) { createStatus.textContent = "Enter a project name"; createStatus.className = "err"; return; }
+      document.getElementById("create").disabled = true;
+      try {
+        const body = { name };
+        if (team_license) body.team_license = team_license;
+        const headers = { "Content-Type": "application/json" };
+        if (createSecret) headers["X-Keel-Create-Secret"] = createSecret;
+        const res = await fetch("/api/projects", { method: "POST", headers, body: JSON.stringify(body) });
+        const raw = await res.text();
+        let data = {};
+        try { data = raw ? JSON.parse(raw) : {}; } catch (_) {}
+        if (res.status === 402) {
+          alert((data.error || "Project limit reached") + "\n\nUpgrade at " + (data.upgrade_url || "/pricing"));
+          window.location.href = data.upgrade_url || "/pricing";
+          return;
+        }
+        if (!res.ok) throw new Error(data.error || raw || `Request failed (${res.status})`);
+        const base = location.origin;
+        localStorage.setItem("keel_api_key_" + data.id, data.api_key);
+        localStorage.setItem("keel_project", JSON.stringify({
+          id: data.id, key: data.api_key, url: base, name
+        }));
+        if (data.team_license) {
+          localStorage.setItem("keel_team", JSON.stringify({
+            license: data.team_license, id: data.team_id, plan: data.plan
+          }));
+        }
+        document.getElementById("api-key-out").textContent = data.api_key;
+        document.getElementById("project-id-out").textContent = data.id;
+        document.getElementById("commands").textContent =
+          `npm install -g @keel-agent/cli\n` +
+          `keel cloud link --url ${base} --project ${data.id} --key ${data.api_key}\n` +
+          `cd your-repo && keel onboard "your task" --accept "tests pass"`;
+        document.getElementById("dashboard-link").href = data.dashboard_url;
+        document.getElementById("result").classList.add("show");
+        createStatus.textContent = "Project created — opening dashboard…";
+        createStatus.className = "ok";
+        setTimeout(() => { location.href = data.dashboard_url; }, 1200);
+      } catch (e) {
+        createStatus.textContent = "Failed: " + e.message;
+        createStatus.className = "err";
+      } finally {
+        document.getElementById("create").disabled = false;
+      }
+    };
+
+    const savedTeam = localStorage.getItem("keel_team");
+    if (savedTeam) {
+      try { document.getElementById("team-license").value = JSON.parse(savedTeam).license || ""; } catch (_) {}
+    }
   </script>
 </body>
 </html>
