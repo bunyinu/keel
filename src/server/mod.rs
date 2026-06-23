@@ -285,18 +285,33 @@ async fn home() -> Html<&'static str> {
     Html(include_str!("../../web/index.html"))
 }
 
-async fn login_page(axum::extract::State(state): axum::extract::State<AppState>) -> Html<String> {
+async fn start_page(axum::extract::State(state): axum::extract::State<AppState>) -> Html<String> {
     Html(inject_create_secret(
-        include_str!("../../web/login.html"),
+        include_str!("../../web/start.html"),
         state.create_secret.as_deref(),
     ))
 }
 
+async fn login_redirect(request: axum::extract::Request) -> impl IntoResponse {
+    let query = request.uri().query().unwrap_or("");
+    redirect_to_start(query)
+}
+
 async fn new_redirect() -> impl IntoResponse {
+    redirect_to_start("")
+}
+
+fn redirect_to_start(query: &str) -> Response {
+    let loc = if query.is_empty() {
+        "/start".to_string()
+    } else {
+        format!("/start?{query}")
+    };
     (
         StatusCode::SEE_OTHER,
-        [(header::LOCATION, "/login?tab=create")],
+        [(header::LOCATION, loc)],
     )
+        .into_response()
 }
 
 fn inject_create_secret(html: &str, secret: Option<&str>) -> String {
@@ -341,7 +356,8 @@ fn html_escape(s: &str) -> String {
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", get(home))
-        .route("/login", get(login_page))
+        .route("/start", get(start_page))
+        .route("/login", get(login_redirect))
         .route("/new", get(new_redirect))
         .route("/site.css", get(site_css))
         .route("/demo.gif", get(demo_gif))

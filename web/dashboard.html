@@ -11,18 +11,27 @@
     <a class="logo" href="/">Keel</a>
     <nav>
       <a href="/">Home</a>
-      <a href="/login">Sign in</a>
+      <a href="/start">Open cloud</a>
       <a href="/pricing">Pricing</a>
       <a href="/trust">Trust</a>
     </nav>
   </header>
+
+  <div id="key-banner" class="key-banner" style="display:none">
+    <div class="page">
+      <strong>Save your access key</strong> — shown once. Copy it before you leave.
+      <pre id="key-banner-value"></pre>
+      <button type="button" class="btn secondary" id="copy-key">Copy</button>
+      <button type="button" class="btn secondary" id="dismiss-key">Got it</button>
+    </div>
+  </div>
 
   <main class="page" id="content" style="display:none">
     <h1 id="title">Project dashboard</h1>
     <p class="dashboard-meta">Project <code>__PROJECT_ID__</code> · <span id="updated"></span></p>
     <div class="dashboard-actions">
       <a href="/dashboard/__PROJECT_ID__/edit">Edit goal</a>
-      · <a href="#" id="signout">Sign out</a>
+      · <a href="/start">Switch project</a>
     </div>
     <div class="card">
       <h2>Connect your repo</h2>
@@ -38,17 +47,13 @@
   <script>
     const projectId = "__PROJECT_ID__";
     const storageKey = "keel_api_key_" + projectId;
-    const loginUrl = "/login?project=" + encodeURIComponent(projectId);
-
-    function signOut() {
-      localStorage.removeItem(storageKey);
-      location.href = loginUrl;
-    }
+    const startUrl = "/start?project=" + encodeURIComponent(projectId) +
+      (location.pathname.endsWith("/edit") ? "&next=" + encodeURIComponent(location.pathname) : "");
 
     async function load() {
       const key = localStorage.getItem(storageKey);
       if (!key) {
-        location.replace(loginUrl);
+        location.replace(startUrl);
         return;
       }
       const res = await fetch("/api/projects/" + projectId, {
@@ -56,7 +61,7 @@
       });
       if (res.status === 401 || res.status === 403) {
         localStorage.removeItem(storageKey);
-        location.replace(loginUrl);
+        location.replace(startUrl);
         return;
       }
       if (!res.ok) {
@@ -77,7 +82,20 @@
         "npm install -g @keel-agent/cli\n" +
         "keel cloud link --url " + base + " --project " + projectId + " --key " + key + "\n" +
         "cd your-repo && keel onboard \"your task\" --accept \"tests pass\"";
-      document.getElementById("signout").onclick = (e) => { e.preventDefault(); signOut(); };
+
+      const onceKey = sessionStorage.getItem("keel_show_key");
+      if (onceKey) {
+        const banner = document.getElementById("key-banner");
+        document.getElementById("key-banner-value").textContent = onceKey;
+        banner.style.display = "block";
+        document.getElementById("copy-key").onclick = () => {
+          navigator.clipboard.writeText(onceKey);
+        };
+        document.getElementById("dismiss-key").onclick = () => {
+          sessionStorage.removeItem("keel_show_key");
+          banner.style.display = "none";
+        };
+      }
     }
 
     load();

@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Keel Cloud</title>
+  <link rel="stylesheet" href="/site.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="logo" href="/">Keel</a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/start" class="active">Open cloud</a>
+      <a href="/pricing">Pricing</a>
+      <a href="/trust">Trust</a>
+    </nav>
+  </header>
+
+  <main class="page page-narrow">
+    <!-- New project (default) -->
+    <section id="view-new">
+      <h1>Start a project</h1>
+      <p class="lead">Name it, open your dashboard. No password — just an access key we show you once.</p>
+      <div class="card">
+        <label for="name">Project name</label>
+        <input id="name" type="text" placeholder="my-app" autocomplete="off" />
+        <details class="optional-details">
+          <summary>Team license (Pro)</summary>
+          <label for="team-license">License key</label>
+          <input id="team-license" type="text" placeholder="keel_team_…" autocomplete="off" />
+        </details>
+        <button type="button" class="btn primary" id="create" style="margin-top:1.25rem;width:100%">Start → open dashboard</button>
+        <p id="create-status" class="muted" style="margin-top:1rem"></p>
+      </div>
+      <p class="muted" style="margin-top:1.5rem">
+        Already started one? <a href="#" id="show-open">Open existing project</a>
+      </p>
+    </section>
+
+    <!-- Open existing -->
+    <section id="view-open" style="display:none">
+      <h1>Open your project</h1>
+      <p class="lead">Paste your project ID and access key from when you started the project.</p>
+      <div class="card">
+        <label for="project_id">Project ID</label>
+        <input id="project_id" type="text" placeholder="from /dashboard/… URL" autocomplete="off" />
+        <label for="api_key">Access key</label>
+        <input id="api_key" type="password" placeholder="keel_…" autocomplete="off" />
+        <button type="button" class="btn primary" id="open" style="margin-top:1.25rem;width:100%">Open dashboard</button>
+        <p id="open-status" class="muted" style="margin-top:1rem"></p>
+      </div>
+      <p class="muted" style="margin-top:1.5rem">
+        New here? <a href="#" id="show-new">Start a new project</a>
+      </p>
+    </section>
+  </main>
+
+  <script>
+    window.KEEL_CREATE_SECRET = "__KEEL_CREATE_SECRET__";
+    const params = new URLSearchParams(location.search);
+    const next = params.get("next") || "";
+    const createSecret = window.KEEL_CREATE_SECRET || "";
+    const viewNew = document.getElementById("view-new");
+    const viewOpen = document.getElementById("view-open");
+
+    function showNew() {
+      viewNew.style.display = "block";
+      viewOpen.style.display = "none";
+      history.replaceState(null, "", "/start");
+    }
+    function showOpen() {
+      viewNew.style.display = "none";
+      viewOpen.style.display = "block";
+      const pid = params.get("project") || "";
+      if (pid) history.replaceState(null, "", "/start?project=" + encodeURIComponent(pid));
+      else history.replaceState(null, "", "/start?open=1");
+    }
+
+    document.getElementById("show-open").onclick = (e) => { e.preventDefault(); showOpen(); };
+    document.getElementById("show-new").onclick = (e) => { e.preventDefault(); showNew(); };
+
+    if (params.get("project") || params.get("open") === "1") showOpen();
+    else showNew();
+
+    const projectInput = document.getElementById("project_id");
+    const keyInput = document.getElementById("api_key");
+    projectInput.value = params.get("project") || "";
+    if (projectInput.value) {
+      const k = localStorage.getItem("keel_api_key_" + projectInput.value);
+      if (k) keyInput.value = k;
+    }
+
+    // Resume last project on this browser
+    const saved = localStorage.getItem("keel_project");
+    if (saved && !params.get("project")) {
+      try {
+        const p = JSON.parse(saved);
+        if (p.id && localStorage.getItem("keel_api_key_" + p.id)) {
+          const resume = document.createElement("p");
+          resume.className = "card ok";
+          resume.style.marginTop = "1rem";
+          resume.innerHTML = `Continue as <strong>${p.name || p.id}</strong> — <a href="/dashboard/${p.id}">Open dashboard</a>`;
+          viewNew.insertBefore(resume, viewNew.querySelector(".card"));
+        }
+      } catch (_) {}
+    }
+
+    async function openDashboard(id, key) {
+      localStorage.setItem("keel_api_key_" + id, key);
+      const res = await fetch("/api/projects/" + encodeURIComponent(id), {
+        headers: { Authorization: "Bearer " + key },
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      localStorage.setItem("keel_project", JSON.stringify({
+        id, key, url: location.origin, name: data.name || ""
+      }));
+      location.href = next || ("/dashboard/" + encodeURIComponent(id));
+      return true;
+    }
+
+    document.getElementById("open").onclick = async () => {
+      const id = projectInput.value.trim();
+      const key = keyInput.value.trim();
+      const st = document.getElementById("open-status");
+      st.className = "muted";
+      if (!id) { st.textContent = "Enter project ID"; st.className = "err"; return; }
+      if (!key) { st.textContent = "Enter access key"; st.className = "err"; return; }
+      st.textContent = "Opening…";
+      const ok = await openDashboard(id, key);
+      if (!ok) {
+        st.textContent = "Wrong project ID or access key";
+        st.className = "err";
+      }
+    };
+    keyInput.addEventListener("keydown", (e) => { if (e.key === "Enter") document.getElementById("open").click(); });
+
+    document.getElementById("create").onclick = async () => {
+      const name = document.getElementById("name").value.trim();
+      const team_license = document.getElementById("team-license").value.trim();
+      const st = document.getElementById("create-status");
+      st.className = "muted";
+      if (!name) { st.textContent = "Enter a project name"; st.className = "err"; return; }
+      document.getElementById("create").disabled = true;
+      try {
+        const body = { name };
+        if (team_license) body.team_license = team_license;
+        const headers = { "Content-Type": "application/json" };
+        if (createSecret) headers["X-Keel-Create-Secret"] = createSecret;
+        const res = await fetch("/api/projects", { method: "POST", headers, body: JSON.stringify(body) });
+        const raw = await res.text();
+        let data = {};
+        try { data = raw ? JSON.parse(raw) : {}; } catch (_) {}
+        if (res.status === 402) {
+          alert((data.error || "Project limit reached") + "\n\nUpgrade at " + (data.upgrade_url || "/pricing"));
+          window.location.href = data.upgrade_url || "/pricing";
+          return;
+        }
+        if (!res.ok) throw new Error(data.error || raw || `Request failed (${res.status})`);
+        sessionStorage.setItem("keel_show_key", data.api_key);
+        localStorage.setItem("keel_api_key_" + data.id, data.api_key);
+        localStorage.setItem("keel_project", JSON.stringify({
+          id: data.id, key: data.api_key, url: location.origin, name
+        }));
+        if (data.team_license) {
+          localStorage.setItem("keel_team", JSON.stringify({
+            license: data.team_license, id: data.team_id, plan: data.plan
+          }));
+        }
+        location.href = data.dashboard_url;
+      } catch (e) {
+        st.textContent = "Failed: " + e.message;
+        st.className = "err";
+        document.getElementById("create").disabled = false;
+      }
+    };
+
+    const savedTeam = localStorage.getItem("keel_team");
+    if (savedTeam) {
+      try { document.getElementById("team-license").value = JSON.parse(savedTeam).license || ""; } catch (_) {}
+    }
+  </script>
+</body>
+</html>

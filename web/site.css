@@ -68,3 +68,15 @@ pre {
 
 .dashboard-meta { color: #8fa3bf; font-size: .9rem; margin-bottom: 1rem; }
 .dashboard-actions { margin: 1rem 0; }
+
+.key-banner {
+  background: #1a2a44; border-bottom: 1px solid #3d7eff; padding: 1rem 0;
+}
+.key-banner pre {
+  margin: .75rem 0; font-size: .85rem;
+}
+.key-banner .btn { margin-right: .5rem; margin-top: .5rem; }
+
+.optional-details { margin-top: 1rem; color: #8fa3bf; font-size: .9rem; }
+.optional-details summary { cursor: pointer; margin-bottom: .5rem; }
+.optional-details[open] summary { margin-bottom: .75rem; }
