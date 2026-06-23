@@ -79,4 +79,6 @@ pre {
 
 .optional-details { margin-top: 1rem; color: #8fa3bf; font-size: .9rem; }
 .optional-details summary { cursor: pointer; margin-bottom: .5rem; }
-.optional-details[open] summary { margin-bottom: .75rem; }
+.project-table { width: 100%; border-collapse: collapse; margin-top: .75rem; }
+.project-table th, .project-table td { text-align: left; padding: .6rem .4rem; border-bottom: 1px solid #1e2a3d; }
+.project-table th { color: #8fa3bf; font-weight: 600; font-size: .85rem; }

@@ -16,9 +16,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use self::db::{
-    count_team_projects, create_project, get_by_api_key, get_by_id, get_team_by_id,
-    get_team_by_license, list_team_projects, sync_project, upgrade_team_to_pro,
-    valid_upgrade_code, Project, Team,
+    count_team_projects, create_project, create_team, get_by_api_key, get_by_id, get_team_by_id,
+    get_team_by_license, link_project_to_team, list_team_projects_owned, sync_project,
+    upgrade_team_to_pro, valid_upgrade_code, Project, Team,
 };
 
 #[derive(Clone)]
@@ -27,6 +27,26 @@ pub struct AppState {
     pub stripe_payment_link: String,
     /// When set, POST /api/projects requires matching `X-Keel-Create-Secret` header.
     pub create_secret: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct CreateTeamRequest {
+    name: String,
+}
+
+#[derive(Serialize)]
+pub struct CreateTeamResponse {
+    id: String,
+    name: String,
+    account_key: String,
+    plan: String,
+    max_projects: i32,
+}
+
+#[derive(Deserialize)]
+pub struct LinkProjectRequest {
+    project_id: String,
+    api_key: String,
 }
 
 #[derive(Deserialize)]
@@ -103,6 +123,37 @@ fn create_secret_ok(state: &AppState, headers: &HeaderMap) -> bool {
     }
 }
 
+async fn create_team_handler(
+    axum::extract::State(state): axum::extract::State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<CreateTeamRequest>,
+) -> Result<Response, StatusCode> {
+    if !create_secret_ok(&state, &headers) {
+        return Ok((
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Account creation is not allowed from this client"})),
+        )
+            .into_response());
+    }
+    let name = body.name.trim();
+    if name.is_empty() {
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Account name is required"})),
+        )
+            .into_response());
+    }
+    let team = create_team(name).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(CreateTeamResponse {
+        id: team.id,
+        name: team.name,
+        account_key: team.license_key,
+        plan: team.plan,
+        max_projects: team.max_projects,
+    })
+    .into_response())
+}
+
 async fn create_project_handler(
     axum::extract::State(state): axum::extract::State<AppState>,
     headers: HeaderMap,
@@ -174,11 +225,56 @@ async fn team_projects_handler(headers: HeaderMap) -> Result<Json<Value>, Status
     let key = extract_bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
     let team = get_team_by_license(&key).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let team = team.ok_or(StatusCode::UNAUTHORIZED)?;
-    let projects = list_team_projects(&team.id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let projects =
+        list_team_projects_owned(&team.id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(json!({
         "team": team_json(&team),
         "projects": projects,
     })))
+}
+
+async fn link_project_handler(
+    headers: HeaderMap,
+    Json(body): Json<LinkProjectRequest>,
+) -> Result<Response, StatusCode> {
+    let team_key = extract_bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
+    let project_id = body.project_id.trim();
+    let api_key = body.api_key.trim();
+    if project_id.is_empty() || api_key.is_empty() {
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Project ID and access key are required"})),
+        )
+            .into_response());
+    }
+    let project = match link_project_to_team(project_id, api_key, &team_key) {
+        Ok(p) => p,
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("project limit") {
+                return Ok((
+                    StatusCode::PAYMENT_REQUIRED,
+                    Json(json!({"error": msg, "upgrade_url": "/pricing"})),
+                )
+                    .into_response());
+            }
+            if msg.contains("not found") || msg.contains("invalid") || msg.contains("another account")
+            {
+                return Ok((StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response());
+            }
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+    Ok(Json(json!({
+        "ok": true,
+        "project": {
+            "id": project.id,
+            "name": project.name,
+            "api_key": project.api_key,
+            "dashboard_url": format!("/dashboard/{}", project.id),
+        }
+    }))
+    .into_response())
 }
 
 fn team_json(team: &Team) -> TeamView {
@@ -199,10 +295,6 @@ async fn pricing_page(axum::extract::State(state): axum::extract::State<AppState
         &format!("\"{link}\" || stripeDefault"),
     );
     Html(html)
-}
-
-async fn team_page() -> Html<&'static str> {
-    Html(include_str!("../../web/team.html"))
 }
 
 async fn get_project(
@@ -285,6 +377,17 @@ async fn home() -> Html<&'static str> {
     Html(include_str!("../../web/index.html"))
 }
 
+async fn account_page(axum::extract::State(state): axum::extract::State<AppState>) -> Html<String> {
+    Html(inject_create_secret(
+        include_str!("../../web/account.html"),
+        state.create_secret.as_deref(),
+    ))
+}
+
+async fn team_redirect() -> Response {
+    (StatusCode::SEE_OTHER, [(header::LOCATION, "/account")]).into_response()
+}
+
 async fn start_page(axum::extract::State(state): axum::extract::State<AppState>) -> Html<String> {
     Html(inject_create_secret(
         include_str!("../../web/start.html"),
@@ -357,20 +460,23 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", get(home))
         .route("/start", get(start_page))
+        .route("/account", get(account_page))
         .route("/login", get(login_redirect))
         .route("/new", get(new_redirect))
         .route("/site.css", get(site_css))
         .route("/demo.gif", get(demo_gif))
         .route("/trust", get(trust_page))
         .route("/pricing", get(pricing_page))
-        .route("/team", get(team_page))
+        .route("/team", get(team_redirect))
         .route("/health", get(health))
+        .route("/api/teams", post(create_team_handler))
         .route("/api/projects", post(create_project_handler))
         .route("/api/projects/{id}", get(get_project))
         .route("/api/projects/{id}/sync", post(sync_handler))
         .route("/api/projects/{id}/goal", put(update_goal_handler))
-        .route("/api/billing/upgrade", post(upgrade_handler))
+        .route("/api/teams/projects/link", post(link_project_handler))
         .route("/api/teams/projects", get(team_projects_handler))
+        .route("/api/billing/upgrade", post(upgrade_handler))
         .route("/dashboard/{id}", get(dashboard))
         .route("/dashboard/{id}/edit", get(dashboard_edit))
         .with_state(state)

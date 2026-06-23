@@ -11,7 +11,7 @@
     <a class="logo" href="/">Keel</a>
     <nav>
       <a href="/">Home</a>
-      <a href="/start">Open cloud</a>
+      <a href="/account">Account</a>
       <a href="/pricing">Pricing</a>
       <a href="/trust">Trust</a>
     </nav>
@@ -31,7 +31,7 @@
     <p class="dashboard-meta">Project <code>__PROJECT_ID__</code> · <span id="updated"></span></p>
     <div class="dashboard-actions">
       <a href="/dashboard/__PROJECT_ID__/edit">Edit goal</a>
-      · <a href="/start">Switch project</a>
+      · <a href="/account">Your account</a>
     </div>
     <div class="card">
       <h2>Connect your repo</h2>
@@ -47,8 +47,7 @@
   <script>
     const projectId = "__PROJECT_ID__";
     const storageKey = "keel_api_key_" + projectId;
-    const startUrl = "/start?project=" + encodeURIComponent(projectId) +
-      (location.pathname.endsWith("/edit") ? "&next=" + encodeURIComponent(location.pathname) : "");
+    const startUrl = "/account?link=" + encodeURIComponent(projectId);
 
     async function load() {
       const key = localStorage.getItem(storageKey);

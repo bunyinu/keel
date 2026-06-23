@@ -30,6 +30,20 @@ pub struct Project {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OwnedProjectSummary {
+    pub id: String,
+    pub name: String,
+    pub api_key: String,
+    pub updated_at: String,
+    pub dashboard_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub goal_title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_step: Option<String>,
+    pub compactions: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectSummary {
     pub id: String,
     pub name: String,
@@ -259,6 +273,38 @@ pub fn create_project(name: &str, team_license: Option<&str>) -> Result<Project>
 }
 
 pub fn list_team_projects(team_id: &str) -> Result<Vec<ProjectSummary>> {
+    list_team_projects_inner(team_id, false)
+}
+
+/// Full project rows for an account owner (includes access keys).
+pub fn list_team_projects_owned(team_id: &str) -> Result<Vec<OwnedProjectSummary>> {
+    let c = conn()?;
+    let mut stmt = c.prepare(
+        "SELECT id, name, api_key, updated_at, state_json FROM projects WHERE team_id = ?1 ORDER BY updated_at DESC",
+    )?;
+    let rows = stmt.query_map(params![team_id], |row| {
+        let id: String = row.get(0)?;
+        let state_json: String = row.get(4)?;
+        let (goal_title, current_step, compactions) = fleet_fields_from_state(&state_json);
+        Ok(OwnedProjectSummary {
+            id: id.clone(),
+            name: row.get(1)?,
+            api_key: row.get(2)?,
+            updated_at: row.get(3)?,
+            dashboard_url: format!("/dashboard/{id}"),
+            goal_title,
+            current_step,
+            compactions,
+        })
+    })?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+fn list_team_projects_inner(team_id: &str, _owned: bool) -> Result<Vec<ProjectSummary>> {
     let c = conn()?;
     let mut stmt = c.prepare(
         "SELECT id, name, updated_at, state_json FROM projects WHERE team_id = ?1 ORDER BY updated_at DESC",
@@ -303,6 +349,36 @@ fn fleet_fields_from_state(state_json: &str) -> (Option<String>, Option<String>,
         .and_then(|c| c.as_u64())
         .unwrap_or(0) as u32;
     (goal_title, current_step, compactions)
+}
+
+pub fn link_project_to_team(project_id: &str, api_key: &str, team_license: &str) -> Result<Project> {
+    let team = get_team_by_license(team_license)?
+        .ok_or_else(|| anyhow::anyhow!("invalid account key"))?;
+    let project = get_by_id(project_id)?
+        .ok_or_else(|| anyhow::anyhow!("project not found"))?;
+    if project.api_key != api_key {
+        anyhow::bail!("invalid project access key");
+    }
+    if !project.team_id.is_empty() && project.team_id != team.id {
+        anyhow::bail!("project belongs to another account");
+    }
+    if project.team_id != team.id {
+        let count = count_team_projects(&team.id)?;
+        if count >= team.max_projects {
+            anyhow::bail!(
+                "project limit reached for {} plan ({})",
+                team.plan,
+                team.max_projects
+            );
+        }
+        let c = conn()?;
+        c.execute(
+            "UPDATE projects SET team_id = ?1 WHERE id = ?2",
+            params![team.id, project_id],
+        )?;
+    }
+    get_by_id(project_id)?
+        .ok_or_else(|| anyhow::anyhow!("project not found after link"))
 }
 
 pub fn get_by_api_key(api_key: &str) -> Result<Option<Project>> {

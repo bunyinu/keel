@@ -11,7 +11,7 @@
     <a class="logo" href="/">Keel</a>
     <nav>
       <a href="/">Home</a>
-      <a href="/start">Open cloud</a>
+      <a href="/account">Account</a>
       <a href="/pricing">Pricing</a>
       <a href="/trust">Trust</a>
     </nav>
@@ -40,8 +40,7 @@
   <script>
     const projectId = "__PROJECT_ID__";
     const storageKey = "keel_api_key_" + projectId;
-    const loginUrl = "/start?project=" + encodeURIComponent(projectId) +
-      "&next=" + encodeURIComponent("/dashboard/" + projectId + "/edit");
+    const loginUrl = "/account?link=" + encodeURIComponent(projectId);
     const status = document.getElementById("status");
 
     function lines(id) {

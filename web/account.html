@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Keel — Account</title>
+  <link rel="stylesheet" href="/site.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="logo" href="/">Keel</a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/account" class="active">Account</a>
+      <a href="/pricing">Pricing</a>
+      <a href="/trust">Trust</a>
+    </nav>
+  </header>
+
+  <div id="key-banner" class="key-banner" style="display:none">
+    <div class="page">
+      <strong>Save your account key</strong> — you need this to open your account on another browser.
+      <pre id="key-banner-value"></pre>
+      <button type="button" class="btn secondary" id="copy-key">Copy</button>
+      <button type="button" class="btn secondary" id="dismiss-key">Got it</button>
+    </div>
+  </div>
+
+  <main class="page">
+    <h1 id="account-title">Your account</h1>
+    <p id="account-meta" class="dashboard-meta"></p>
+    <p><a href="#" id="signout">Sign out</a></p>
+
+    <section class="card" style="margin-top:1.5rem">
+      <h2 style="margin:0 0 1rem;font-size:1.1rem">New project</h2>
+      <label for="project-name">Project name</label>
+      <input id="project-name" type="text" placeholder="my-app" autocomplete="off" />
+      <button type="button" class="btn primary" id="create-project" style="margin-top:1rem">Create project</button>
+      <p id="project-status" class="muted" style="margin-top:1rem"></p>
+    </section>
+
+    <section class="card" style="margin-top:1.5rem">
+      <h2 style="margin:0 0 1rem;font-size:1.1rem">Add existing project</h2>
+      <p class="muted">Have a project from before? Link it with its ID and access key.</p>
+      <label for="link-id">Project ID</label>
+      <input id="link-id" type="text" placeholder="UUID from dashboard URL" autocomplete="off" />
+      <label for="link-key">Project access key</label>
+      <input id="link-key" type="password" placeholder="keel_…" autocomplete="off" />
+      <button type="button" class="btn secondary" id="link-project" style="margin-top:1rem">Add to account</button>
+      <p id="link-status" class="muted" style="margin-top:1rem"></p>
+    </section>
+
+    <section style="margin-top:2rem">
+      <h2>Your projects</h2>
+      <div id="projects"><p class="muted">Loading…</p></div>
+    </section>
+  </main>
+
+  <script>
+    window.KEEL_CREATE_SECRET = "__KEEL_CREATE_SECRET__";
+    const createSecret = window.KEEL_CREATE_SECRET || "";
+    const params = new URLSearchParams(location.search);
+
+    function account() {
+      try { return JSON.parse(localStorage.getItem("keel_account") || ""); } catch (_) { return null; }
+    }
+
+    function requireAccount() {
+      const a = account();
+      if (!a || !a.license) { location.replace("/start"); return null; }
+      return a;
+    }
+
+    function storeProjectKey(id, key, name) {
+      localStorage.setItem("keel_api_key_" + id, key);
+      localStorage.setItem("keel_project", JSON.stringify({
+        id, key, url: location.origin, name: name || ""
+      }));
+    }
+
+    async function loadProjects() {
+      const a = requireAccount();
+      if (!a) return;
+      document.getElementById("account-title").textContent = a.name;
+      document.getElementById("account-meta").textContent =
+        `${a.plan || "free"} plan · account key ends …${(a.license || "").slice(-6)}`;
+
+      const res = await fetch("/api/teams/projects", {
+        headers: { Authorization: "Bearer " + a.license },
+      });
+      const data = await res.json().catch(() => ({}));
+      const box = document.getElementById("projects");
+      if (!res.ok) {
+        box.innerHTML = `<p class="err">${data.error || "Could not load projects"}</p>`;
+        return;
+      }
+      if (a.name !== data.team.name) {
+        a.name = data.team.name;
+        localStorage.setItem("keel_account", JSON.stringify(a));
+        document.getElementById("account-title").textContent = a.name;
+      }
+      for (const p of data.projects) storeProjectKey(p.id, p.api_key, p.name);
+      if (!data.projects.length) {
+        box.innerHTML = "<p class=\"muted\">No projects yet. Create one above or add an existing project.</p>";
+        return;
+      }
+      const rows = data.projects.map(p => {
+        const goal = p.goal_title ? escapeHtml(p.goal_title) : "<span class=\"muted\">(no goal)</span>";
+        return `<tr>
+          <td><a href="${p.dashboard_url}"><strong>${escapeHtml(p.name)}</strong></a></td>
+          <td>${goal}</td>
+          <td class="muted">${p.updated_at}</td>
+        </tr>`;
+      }).join("");
+      box.innerHTML = `<table class="project-table"><thead><tr><th>Project</th><th>Goal</th><th>Updated</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    }
+
+    document.getElementById("signout").onclick = (e) => {
+      e.preventDefault();
+      localStorage.removeItem("keel_account");
+      location.href = "/start";
+    };
+
+    document.getElementById("create-project").onclick = async () => {
+      const a = requireAccount();
+      if (!a) return;
+      const name = document.getElementById("project-name").value.trim();
+      const st = document.getElementById("project-status");
+      st.className = "muted";
+      if (!name) { st.textContent = "Enter a project name"; st.className = "err"; return; }
+      const headers = { "Content-Type": "application/json" };
+      if (createSecret) headers["X-Keel-Create-Secret"] = createSecret;
+      const res = await fetch("/api/projects", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ name, team_license: a.license }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 402) {
+        st.textContent = (data.error || "Project limit") + " — see /pricing";
+        st.className = "err";
+        return;
+      }
+      if (!res.ok) {
+        st.textContent = data.error || "Could not create project";
+        st.className = "err";
+        return;
+      }
+      sessionStorage.setItem("keel_show_key", data.api_key);
+      storeProjectKey(data.id, data.api_key, name);
+      document.getElementById("project-name").value = "";
+      st.textContent = "Created — opening dashboard…";
+      st.className = "ok";
+      setTimeout(() => { location.href = data.dashboard_url; }, 600);
+    };
+
+    document.getElementById("link-project").onclick = async () => {
+      const a = requireAccount();
+      if (!a) return;
+      const project_id = document.getElementById("link-id").value.trim();
+      const api_key = document.getElementById("link-key").value.trim();
+      const st = document.getElementById("link-status");
+      st.className = "muted";
+      if (!project_id || !api_key) {
+        st.textContent = "Enter project ID and access key";
+        st.className = "err";
+        return;
+      }
+      const res = await fetch("/api/teams/projects/link", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + a.license,
+        },
+        body: JSON.stringify({ project_id, api_key }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        st.textContent = data.error || "Could not add project";
+        st.className = "err";
+        return;
+      }
+      storeProjectKey(data.project.id, data.project.api_key, data.project.name);
+      document.getElementById("link-id").value = "";
+      document.getElementById("link-key").value = "";
+      st.textContent = "Added " + data.project.name;
+      st.className = "ok";
+      loadProjects();
+    };
+
+    const onceKey = sessionStorage.getItem("keel_show_account_key");
+    if (onceKey) {
+      const banner = document.getElementById("key-banner");
+      document.getElementById("key-banner-value").textContent = onceKey;
+      banner.style.display = "block";
+      document.getElementById("copy-key").onclick = () => navigator.clipboard.writeText(onceKey);
+      document.getElementById("dismiss-key").onclick = () => {
+        sessionStorage.removeItem("keel_show_account_key");
+        banner.style.display = "none";
+      };
+    }
+
+    if (params.get("link")) {
+      document.getElementById("link-id").value = params.get("link");
+    }
+    loadProjects();
+  </script>
+</body>
+</html>
