@@ -1,7 +1,7 @@
 {
   "name": "@keel-agent/cli",
-  "version": "0.3.1",
-  "description": "Repo-local agent state for Claude Code and Codex",
+  "version": "0.3.2",
+  "description": "Repo-local agent state for Claude Code, Codex, and Cursor",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -22,10 +22,10 @@
     "scripts"
   ],
   "optionalDependencies": {
-    "@keel-agent/linux-x64-gnu": "0.3.1",
-    "@keel-agent/linux-arm64-gnu": "0.3.1",
-    "@keel-agent/darwin-x64": "0.3.1",
-    "@keel-agent/darwin-arm64": "0.3.1"
+    "@keel-agent/linux-x64-gnu": "0.3.2",
+    "@keel-agent/linux-arm64-gnu": "0.3.2",
+    "@keel-agent/darwin-x64": "0.3.2",
+    "@keel-agent/darwin-arm64": "0.3.2"
   },
   "engines": {
     "node": ">=18"
