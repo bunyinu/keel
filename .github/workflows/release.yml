@@ -108,11 +108,14 @@ jobs:
           generate_release_notes: true
 
       - name: Publish platform packages
-        if: ${{ secrets.NPM_TOKEN != '' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "NPM_TOKEN not configured — skipping npm publish"
+            exit 0
+          fi
           node npm/keel-cli/scripts/prep-publish.js "$VERSION"
           for pkg in npm/platforms/*/; do
             if [ -f "${pkg}bin/keel" ]; then
