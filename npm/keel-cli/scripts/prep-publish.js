@@ -13,11 +13,11 @@ const pkgPath = path.join(__dirname, "..", "package.json");
 const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
 
 pkg.optionalDependencies = {
-  "@keel-agent/linux-x64-gnu": version,
-  "@keel-agent/linux-arm64-gnu": version,
-  "@keel-agent/darwin-x64": version,
-  "@keel-agent/darwin-arm64": version,
+  "@keel2026/linux-x64-gnu": version,
+  "@keel2026/linux-arm64-gnu": version,
+  "@keel2026/darwin-x64": version,
+  "@keel2026/darwin-arm64": version,
 };
 
 fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
-console.log("Prepared @keel-agent/cli for npm publish");
+console.log("Prepared @keel2026/cli for npm publish");

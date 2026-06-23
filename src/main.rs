@@ -194,9 +194,9 @@ fn cmd_update() -> Result<()> {
         .filter(|o| o.status.success());
 
     if npm.is_some() {
-        println!("Updating Keel via npm (@keel-agent/cli@latest)...");
+        println!("Updating Keel via npm (@keel2026/cli@latest)...");
         let status = std::process::Command::new("npm")
-            .args(["install", "-g", "@keel-agent/cli@latest"])
+            .args(["install", "-g", "@keel2026/cli@latest"])
             .status()?;
         if !status.success() {
             anyhow::bail!("npm install failed");
@@ -207,7 +207,7 @@ fn cmd_update() -> Result<()> {
     }
 
     anyhow::bail!(
-        "Install and update Keel with npm (the standard method):\n\n  npm install -g @keel-agent/cli@latest\n\nRequires Node.js 18+."
+        "Install and update Keel with npm (the standard method):\n\n  npm install -g @keel2026/cli@latest\n\nRequires Node.js 18+."
     );
 }
 

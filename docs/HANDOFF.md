@@ -54,7 +54,7 @@ Compaction clears chat ─┘
 ## 3. Architecture map
 
 ```
-npm (@keel-agent/cli)          Rust binaries
+npm (@keel2026/cli)          Rust binaries
         │                      ├── keel (CLI + hooks)
         └──────────────────────└── keel-server (Axum + SQLite)
                                          │
@@ -84,7 +84,7 @@ npm (@keel-agent/cli)          Rust binaries
 
 ### Distribution
 
-- **Users:** `npm install -g @keel-agent/cli`
+- **Users:** `npm install -g @keel2026/cli`
 - **Release:** tag `v*.*.*` → GitHub Actions → platform binaries + npm publish
 - **Contributors:** `cargo test`, `./scripts/stage-npm.sh`, `./scripts/release.sh --install-global`
 
@@ -204,7 +204,7 @@ Public MAU for Claude Code and Codex CLI is **not disclosed**. Planning ranges:
 
 | Channel | Fit |
 |---------|-----|
-| **npm** (`@keel-agent/cli`) | Primary; matches Codex install mental model |
+| **npm** (`@keel2026/cli`) | Primary; matches Codex install mental model |
 | **GitHub Action / template** | `keel check` on PR → viral in eng teams |
 | **Claude Code / Codex communities** | Discord, X, r/ClaudeAI — compaction pain posts |
 | **Dev influencers** | 30s GIF demo, not feature matrix |
@@ -281,7 +281,7 @@ cargo run --release --bin keel-server
 # Env: PORT, KEEL_DB_PATH, KEEL_STRIPE_PAYMENT_LINK, KEEL_UPGRADE_CODES
 
 # User install
-npm install -g @keel-agent/cli
+npm install -g @keel2026/cli
 cd your-repo && keel init
 keel goal set "..." --accept "tests pass"
 ```
@@ -341,7 +341,7 @@ See `examples/keel-compact-demo/RESULTS.md`.
 |----------|------------|
 | Cloud | https://keel-cloud.onrender.com |
 | Pricing | https://keel-cloud.onrender.com/pricing |
-| npm | `@keel-agent/cli` |
+| npm | `@keel2026/cli` |
 | Compaction demo | `examples/keel-compact-demo/demo.gif` |
 | CI example | `examples/github-keel-check.yml` |
 | Global hooks backup | `~/.claude/settings.json.bak.before-keel-removal-*` (if removed) |

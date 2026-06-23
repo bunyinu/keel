@@ -29,7 +29,7 @@ GIF on the homepage: https://keel-cloud.onrender.com/demo.gif
 **Install:**
 
 ```bash
-npm install -g @keel-agent/cli
+npm install -g @keel2026/cli
 cd your-repo
 keel onboard "your task" --accept "tests pass"
 ```

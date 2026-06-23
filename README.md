@@ -10,13 +10,13 @@ Keel keeps task context in your repository — not in a chat transcript — so a
 
 ```bash
 # Install
-npm install -g @keel-agent/cli
+npm install -g @keel2026/cli
 
 # Update (after you have 0.2.2+)
 keel update
 
 # Or update without the keel command
-npm install -g @keel-agent/cli@latest
+npm install -g @keel2026/cli@latest
 ```
 
 Verify:
@@ -137,7 +137,7 @@ Nobody ships *exactly* Keel as a first-party product. These are the closest alte
 | **Multi-session sync** | ✓ git + optional Keel Cloud | ✓ `CLAUDE_CODE_TASK_LIST_ID` | ✓ shared ledger / handoff export |
 | **Acceptance criteria** | ✓ explicit in goal + optional **Stop gate** | ✗ task status only | ✓ evidence / decisions (no Stop gate) |
 | **Enforcement** | ✓ constraint guard, loop breaker, acceptance gate | ✗ reminders + task status (no tool blocks) | ✗ continuity layer (no tool blocks) |
-| **Install** | `npm install -g @keel-agent/cli` | Built into Claude Code v2.1.16+ | `pip` / MCP server |
+| **Install** | `npm install -g @keel2026/cli` | Built into Claude Code v2.1.16+ | `pip` / MCP server |
 | **Hosted team UI** | ✓ Keel Cloud (free / Pro) | ✗ | ✗ |
 
 ### When to use which
@@ -187,7 +187,7 @@ Keel should not trap users — it should **accumulate value** so removing it hur
 |-------------|-----------|
 | Requires Python runtime | **Single static binary** (~2MB) |
 | ~50ms hook cold start | **Sub-ms hook latency** |
-| pip install | **npm install -g @keel-agent/cli** |
+| pip install | **npm install -g @keel2026/cli** |
 
 ## Develop (contributors only)
 

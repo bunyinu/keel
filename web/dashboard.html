@@ -78,7 +78,7 @@
       document.getElementById("snapshot").textContent = data.snapshot || "(empty)";
       const base = location.origin;
       document.getElementById("connect-cmd").textContent =
-        "npm install -g @keel-agent/cli\n" +
+        "npm install -g @keel2026/cli\n" +
         "keel cloud link --url " + base + " --project " + projectId + " --key " + key + "\n" +
         "cd your-repo && keel onboard \"your task\" --accept \"tests pass\"";
 

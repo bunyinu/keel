@@ -1,6 +1,6 @@
 {
-  "name": "@keel-agent/cli",
-  "version": "0.3.2",
+  "name": "@keel2026/cli",
+  "version": "0.3.3",
   "description": "Repo-local agent state for Claude Code, Codex, and Cursor",
   "license": "Apache-2.0",
   "repository": {
@@ -22,10 +22,10 @@
     "scripts"
   ],
   "optionalDependencies": {
-    "@keel-agent/linux-x64-gnu": "0.3.2",
-    "@keel-agent/linux-arm64-gnu": "0.3.2",
-    "@keel-agent/darwin-x64": "0.3.2",
-    "@keel-agent/darwin-arm64": "0.3.2"
+    "@keel2026/linux-x64-gnu": "0.3.3",
+    "@keel2026/linux-arm64-gnu": "0.3.3",
+    "@keel2026/darwin-x64": "0.3.3",
+    "@keel2026/darwin-arm64": "0.3.3"
   },
   "engines": {
     "node": ">=18"
