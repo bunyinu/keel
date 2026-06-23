@@ -1,6 +1,6 @@
 {
   "name": "@keel2026/cli",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Repo-local agent state for Claude Code, Codex, and Cursor",
   "license": "Apache-2.0",
   "repository": {
@@ -22,10 +22,10 @@
     "scripts"
   ],
   "optionalDependencies": {
-    "@keel2026/linux-x64-gnu": "0.4.0",
-    "@keel2026/linux-arm64-gnu": "0.4.0",
-    "@keel2026/darwin-x64": "0.4.0",
-    "@keel2026/darwin-arm64": "0.4.0"
+    "@keel2026/linux-x64-gnu": "0.4.1",
+    "@keel2026/linux-arm64-gnu": "0.4.1",
+    "@keel2026/darwin-x64": "0.4.1",
+    "@keel2026/darwin-arm64": "0.4.1"
   },
   "engines": {
     "node": ">=18"
