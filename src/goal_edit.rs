@@ -5,6 +5,7 @@ use std::path::Path;
 
 use crate::cloud::push_state;
 use crate::paths::{ensure_keel_dir, utcnow};
+use crate::policy;
 use crate::snapshot::write_snapshot;
 use crate::state::{load_state, log_event, save_state, Goal, KeelState};
 
@@ -80,6 +81,7 @@ pub fn save_goal(form: &GoalForm, root: Option<&Path>, source: &str) -> Result<(
     let mut state = load_state(root)?;
     apply_form(&mut state, form);
     save_state(&mut state, root)?;
+    policy::after_goal_change(root)?;
     write_snapshot(root)?;
     let _ = push_state(root);
     log_event(

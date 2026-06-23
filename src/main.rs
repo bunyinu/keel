@@ -71,6 +71,11 @@ enum Commands {
         #[arg(long)]
         cloud: bool,
     },
+    /// Signed goal policy — tamper-resistant enforcement (default: ECDSA P-256)
+    Policy {
+        #[command(subcommand)]
+        cmd: PolicyCmd,
+    },
     /// Keel configuration
     Config {
         #[command(subcommand)]
@@ -107,6 +112,32 @@ enum GoalCmd {
 }
 
 #[derive(Subcommand)]
+enum PolicyCmd {
+    /// Generate signing keypair and enable required policy mode (default: ecdsa-p256)
+    Init {
+        /// Algorithm: ecdsa-p256 (FIPS 186-4) or ed25519 (legacy, not FIPS-approved)
+        #[arg(long, default_value = "ecdsa-p256")]
+        algorithm: String,
+    },
+    /// Sign the current goal with policy.key
+    Sign,
+    /// Verify policy.sig against the active goal
+    Verify,
+    /// Trust a team public key (policy.pub only — no private key)
+    Trust {
+        pubkey: String,
+        /// Public-key algorithm (default: infer from key length)
+        #[arg(long)]
+        algorithm: Option<String>,
+    },
+    /// Set policy enforcement mode (off | warn | required)
+    Set {
+        #[arg(long)]
+        mode: String,
+    },
+}
+
+#[derive(Subcommand)]
 enum ConfigCmd {
     /// Show config.json
     Show,
@@ -115,6 +146,9 @@ enum ConfigCmd {
         /// Shell command for acceptance gate (use "off" to disable)
         #[arg(long)]
         acceptance: Option<String>,
+        /// Policy mode: off | warn | required
+        #[arg(long)]
+        policy: Option<String>,
     },
 }
 
@@ -165,9 +199,16 @@ fn main() -> Result<()> {
             no_require_goal,
             cloud,
         } => cmd_check(no_require_goal, cloud),
+        Commands::Policy { cmd } => match cmd {
+            PolicyCmd::Init { algorithm } => cmd_policy_init(&algorithm),
+            PolicyCmd::Sign => cmd_policy_sign(),
+            PolicyCmd::Verify => cmd_policy_verify(),
+            PolicyCmd::Trust { pubkey, algorithm } => cmd_policy_trust(&pubkey, algorithm.as_deref()),
+            PolicyCmd::Set { mode } => cmd_policy_set(&mode),
+        },
         Commands::Config { cmd } => match cmd {
             ConfigCmd::Show => cmd_config_show(),
-            ConfigCmd::Set { acceptance } => cmd_config_set(acceptance),
+            ConfigCmd::Set { acceptance, policy } => cmd_config_set(acceptance, policy),
         },
         Commands::Cloud { cmd } => match cmd {
             CloudCmd::Link { url, project, key } => cmd_cloud_link(&url, &project, &key),
@@ -241,24 +282,62 @@ fn cmd_config_show() -> Result<()> {
     Ok(())
 }
 
-fn cmd_config_set(acceptance: Option<String>) -> Result<()> {
-    let Some(val) = acceptance else {
-        anyhow::bail!("usage: keel config set --acceptance \"npm test\"  (or --acceptance off)");
-    };
+fn cmd_config_set(acceptance: Option<String>, policy: Option<String>) -> Result<()> {
+    if acceptance.is_none() && policy.is_none() {
+        anyhow::bail!(
+            "usage: keel config set --acceptance \"npm test\"  or  --policy required"
+        );
+    }
     let mut config = load_config(None)?;
-    if val.eq_ignore_ascii_case("off") {
-        config.acceptance_gate.enabled = false;
-        config.acceptance_gate.command.clear();
+    if let Some(val) = acceptance {
+        if val.eq_ignore_ascii_case("off") {
+            config.acceptance_gate.enabled = false;
+            config.acceptance_gate.command.clear();
+            println!("Acceptance gate disabled");
+        } else {
+            config.acceptance_gate.enabled = true;
+            config.acceptance_gate.command = val.clone();
+            println!("Acceptance gate enabled: {val}");
+            println!("Runs on agent Stop hook before session ends.");
+        }
+    }
+    if let Some(mode) = policy {
+        config.policy.mode = keel::policy::parse_mode(&mode)?;
         save_config(&config, None)?;
-        println!("Acceptance gate disabled");
+        println!("Policy mode: {}", mode);
         return Ok(());
     }
-    config.acceptance_gate.enabled = true;
-    config.acceptance_gate.command = val.clone();
     save_config(&config, None)?;
-    println!("Acceptance gate enabled: {val}");
-    println!("Runs on agent Stop hook before session ends.");
     Ok(())
+}
+
+fn cmd_policy_init(algorithm: &str) -> Result<()> {
+    keel::policy::init_policy_named(None, algorithm)
+}
+
+fn cmd_policy_sign() -> Result<()> {
+    keel::policy::sign_policy(None)?;
+    keel::snapshot::write_snapshot(None)?;
+    println!("Policy signed for current goal.");
+    Ok(())
+}
+
+fn cmd_policy_verify() -> Result<()> {
+    let status = keel::policy::verify_policy(None)?;
+    println!("{} — {}", status.label(), status.detail());
+    if !status.is_ok() {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+fn cmd_policy_trust(pubkey: &str, algorithm: Option<&str>) -> Result<()> {
+    keel::policy::trust_pubkey(None, algorithm, pubkey)
+}
+
+fn cmd_policy_set(mode: &str) -> Result<()> {
+    let parsed = keel::policy::parse_mode(mode)?;
+    keel::policy::set_mode(None, parsed)
 }
 
 fn cmd_init() -> Result<()> {
@@ -267,6 +346,7 @@ fn cmd_init() -> Result<()> {
     println!("Hooks installed for Claude Code, Codex, and Cursor");
     println!("Next: keel onboard \"your task\" --accept \"criterion 1\"");
     println!("     or: keel goal set \"...\" / keel tui");
+    println!("Moat: keel policy init  (signed goals — hooks block tampered policy)");
     Ok(())
 }
 

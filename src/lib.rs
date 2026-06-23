@@ -9,6 +9,7 @@ pub mod install;
 pub mod loop_breaker;
 pub mod onboard;
 pub mod paths;
+pub mod policy;
 pub mod server;
 pub mod snapshot;
 pub mod state;

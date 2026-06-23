@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use crate::install::keel_binary;
 use crate::paths::{find_project_root, keel_dir};
+use crate::policy;
 use crate::state::{load_config, load_state};
 use crate::VERSION;
 
@@ -156,6 +157,13 @@ pub fn run_doctor() -> Result<Vec<Check>> {
         ok: true,
         label: "Hook binary".into(),
         detail: expected_bin,
+    });
+
+    let (policy_ok, policy_detail) = policy::doctor_detail(None);
+    checks.push(Check {
+        ok: policy_ok,
+        label: "Signed policy".into(),
+        detail: policy_detail,
     });
 
     Ok(checks)

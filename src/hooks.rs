@@ -242,6 +242,14 @@ fn handle_pre_tool_use(agent: Agent) -> Result<()> {
         }
     }
 
+    if let Some(reason) = crate::policy::hook_block_reason(None)? {
+        match agent {
+            Agent::Codex => emit_codex_block(&reason),
+            Agent::Cursor => emit_cursor_block(&reason),
+            Agent::Claude => emit_claude_block(&reason),
+        }
+    }
+
     let (block, reason) = check_pre_tool_constraints(None, tool, &tool_input)?;
     if block {
         let _ = record_violation(None, &reason);

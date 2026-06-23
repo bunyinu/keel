@@ -36,6 +36,19 @@
   <h2>Hooks &amp; enforcement</h2>
   <p>Keel hooks can <strong>block</strong> tool use (dependency installs, edits in read-only mode) and <strong>block session end</strong> until an acceptance command passes. That is intentional — review <code>.claude/settings.json</code>, <code>.codex/hooks.json</code>, and <code>.cursor/hooks.json</code> after <code>keel init</code>.</p>
 
+  <h2>Signed policy (v0.4+)</h2>
+  <p>Keel cryptographically signs the <strong>goal policy</strong> (title, acceptance criteria, constraints). Default algorithm is <strong>ECDSA P-256</strong> (NIST secp256r1) — a <strong>FIPS 186-4 approved</strong> signature algorithm. Legacy Ed25519 policies still verify but are not FIPS-approved.</p>
+  <p><strong>Important:</strong> FIPS-approved <em>algorithm</em> ≠ FIPS 140 <em>validated module</em>. Keel ships pure Rust crypto for portability. Regulated deployments that require a validated cryptographic module should run signing in CI with OpenSSL FIPS / AWS-LC FIPS and distribute <code>policy.sig</code> to the team.</p>
+  <ul>
+    <li><strong>Trusted:</strong> <code>policy.pub</code>, <code>policy.sig</code>, and <code>policy.md</code> (signed goal only).</li>
+    <li><strong>Secret:</strong> <code>policy.key</code> — never commit; keep on a lead machine or CI secret.</li>
+    <li><strong>Untrusted:</strong> <code>snapshot.md</code> progress, decisions, and failure logs (agent-written).</li>
+    <li>With <code>policy.mode: required</code>, hooks <strong>block all tools</strong> if the goal is unsigned or tampered.</li>
+    <li>Team members run <code>keel policy trust &lt;pubkey&gt;</code> and commit <code>policy.sig</code> from your lead — they verify without holding the private key.</li>
+    <li>Cloud pull rejects unsigned goal changes when policy is required; local hooks enforce even if cloud state is stale.</li>
+  </ul>
+  <p>We do <strong>not</strong> claim bulletproof protection against a determined attacker with your repo write access and no policy keys. Signed policy raises the bar: agents cannot silently rewrite your mission via injected text in snapshot files.</p>
+
   <h2>Keel Cloud access control</h2>
   <p>Cloud projects are keyed, not public-by-link:</p>
   <ul>
@@ -54,6 +67,6 @@
   <h2>Contact</h2>
   <p>Security issues: open a private issue on <a href="https://github.com/keel-agent/keel">GitHub</a> or email the address on your invoice (Team plan).</p>
 
-  <p class="muted">Last updated: June 2026 · Keel v0.3</p>
+  <p class="muted">Last updated: June 2026 · Keel v0.4</p>
 </body>
 </html>

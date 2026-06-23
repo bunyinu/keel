@@ -4,7 +4,8 @@ use std::path::Path;
 use crate::acceptance::run_acceptance_gate;
 use crate::cloud::load_cloud_config;
 use crate::paths::{find_project_root, keel_dir};
-use crate::state::{load_config, load_state};
+use crate::policy;
+use crate::state::{load_config, load_state, PolicyMode};
 
 #[derive(Debug, Clone, Default)]
 pub struct CheckOptions {
@@ -35,6 +36,13 @@ pub fn run_check(opts: CheckOptions, root: Option<&Path>) -> Result<()> {
 
     if opts.verify_cloud {
         verify_cloud_link(root)?;
+    }
+
+    if config.policy.mode == PolicyMode::Required {
+        let status = policy::verify_policy(root)?;
+        if !status.is_ok() {
+            bail!("Policy check failed ({}) — {}", status.label(), status.detail());
+        }
     }
 
     Ok(())

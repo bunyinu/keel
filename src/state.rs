@@ -82,6 +82,21 @@ pub struct LoopBreakerConfig {
     pub window_minutes: u32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum PolicyMode {
+    Off,
+    #[default]
+    Warn,
+    Required,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct PolicyConfig {
+    #[serde(default)]
+    pub mode: PolicyMode,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct KeelConfig {
     pub loop_breaker: LoopBreakerConfig,
@@ -90,6 +105,8 @@ pub struct KeelConfig {
     pub snapshot_max_failures: u32,
     #[serde(default)]
     pub acceptance_gate: AcceptanceGateConfig,
+    #[serde(default)]
+    pub policy: PolicyConfig,
     pub installed_at: Option<String>,
 }
 
@@ -104,6 +121,7 @@ impl Default for KeelConfig {
             snapshot_max_decisions: 8,
             snapshot_max_failures: 6,
             acceptance_gate: AcceptanceGateConfig::default(),
+            policy: PolicyConfig::default(),
             installed_at: None,
         }
     }

@@ -84,11 +84,15 @@ pub fn pull_state(root: Option<&Path>) -> Result<()> {
     let keel = keel_dir(root);
     std::fs::create_dir_all(&keel)?;
 
+    let local_before = crate::state::load_state(root).ok();
+
     if let Some(state) = body.get("state") {
         crate::paths::write_json_atomic(&keel.join(crate::paths::STATE_FILE), state)?;
+        if let Some(ref before) = local_before {
+            let _ = crate::policy::protect_goal_after_pull(root, before);
+        }
     }
-    if let Some(snapshot) = body.get("snapshot").and_then(|s| s.as_str()) {
-        std::fs::write(keel.join(crate::paths::SNAPSHOT_FILE), snapshot)?;
-    }
+    // Regenerate snapshot from verified local state (ignore cloud snapshot body).
+    let _ = crate::snapshot::write_snapshot(root);
     Ok(())
 }

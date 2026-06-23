@@ -11,6 +11,9 @@ pub const CONFIG_FILE: &str = "config.json";
 pub const CHANGELOG_FILE: &str = "changelog.jsonl";
 pub const ATTEMPTS_FILE: &str = "attempts.jsonl";
 pub const SNAPSHOT_FILE: &str = "snapshot.md";
+pub const POLICY_PUB_FILE: &str = "policy.pub";
+pub const POLICY_KEY_FILE: &str = "policy.key";
+pub const POLICY_SIG_FILE: &str = "policy.sig";
 
 pub fn utcnow() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)

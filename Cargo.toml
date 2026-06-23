@@ -1,6 +1,6 @@
 [package]
 name = "keel"
-version = "0.3.3"
+version = "0.4.0"
 edition = "2021"
 description = "Repo-local agent state for Claude Code and Codex"
 license = "Apache-2.0"
@@ -25,6 +25,10 @@ regex = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+p256 = { version = "0.13", features = ["ecdsa"] }
+signature = "2"
+rand = "0.8"
 sha2 = "0.10"
 tempfile = "3"
 tokio = { version = "1", features = ["full"] }
