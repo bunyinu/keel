@@ -4,22 +4,26 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Keel — Pricing</title>
-  <link rel="stylesheet" href="/site.css" />
+  <link rel="stylesheet" href="/site.css?v=20260624" />
 </head>
 <body>
   <header class="site-header">
-    <a class="logo" href="/">Keel</a>
+    <a class="logo" href="/"><span class="logo-mark">K</span> Keel</a>
     <nav>
       <a href="/">Home</a>
       <a href="/start">Account</a>
       <a href="/pricing" class="active">Pricing</a>
       <a href="/trust">Trust</a>
+      <a class="nav-cta" href="/start">Get started</a>
     </nav>
   </header>
 
   <main class="page page-wide">
-    <h1>Pricing</h1>
-    <p class="lead">CLI + guardrails are free forever. Pay for <strong>Keel Team</strong> — fleet visibility and CI gates across repos.</p>
+    <div class="page-header">
+      <span class="eyebrow">Keel Cloud</span>
+      <h1>Pricing</h1>
+      <p class="lead">CLI and guardrails are free forever. Pay for <strong>Keel Team</strong> — fleet visibility and CI gates across repos.</p>
+    </div>
 
     <div class="pricing-grid">
       <section class="card">
@@ -38,8 +42,8 @@
         <ul class="feature-list">
           <li><strong>Fleet dashboard</strong> — every repo's goal, step, last sync</li>
           <li>Up to <strong>50 repos</strong> on one team license</li>
-          <li><strong>CI-ready</strong> — <code>keel check</code> gates merges (acceptance + goal)</li>
-          <li>Web goal editor for PMs / leads across projects</li>
+          <li><strong>CI-ready</strong> — <code>keel check</code> gates merges</li>
+          <li>Web goal editor for leads across projects</li>
         </ul>
         <a id="stripe-link" class="btn primary" href="#" target="_blank" rel="noopener">Subscribe with Stripe →</a>
       </section>
@@ -47,7 +51,7 @@
 
     <section class="card" style="margin-top: 2rem">
       <h2 class="card-title">Already paid? Activate Pro</h2>
-      <p class="muted">Paste your <strong>account key</strong> (from account creation) and upgrade code from checkout email.</p>
+      <p class="muted">Paste your <strong>account key</strong> and upgrade code from checkout email.</p>
       <label for="team-license">Account key</label>
       <input id="team-license" placeholder="keel_team_…" autocomplete="off" />
       <label for="upgrade-code">Upgrade code</label>
@@ -56,6 +60,16 @@
       <p id="upgrade-status" class="muted" style="margin-top: 1rem"></p>
     </section>
   </main>
+
+  <footer class="site-footer">
+    <div class="inner">
+      <span class="brand">Keel — agent state in your repo</span>
+      <nav>
+        <a href="/">Home</a>
+        <a href="/trust">Trust</a>
+      </nav>
+    </div>
+  </footer>
 
   <script src="/app.js"></script>
   <script>

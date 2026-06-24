@@ -4,69 +4,79 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Keel — Trust &amp; security</title>
-  <style>
-    :root { font-family: system-ui, sans-serif; background: #0b0f14; color: #e8eef7; line-height: 1.6; }
-    body { max-width: 720px; margin: 0 auto; padding: 2.5rem 1.25rem; }
-    h1 { font-size: 1.75rem; margin-bottom: .5rem; }
-    h2 { font-size: 1.15rem; margin-top: 2rem; }
-    p, li { color: #b8c5d9; }
-    a { color: #6cb6ff; }
-    code { background: #1e2a3d; padding: .1rem .35rem; border-radius: 4px; }
-    .muted { color: #8fa3bf; font-size: .95rem; }
-  </style>
+  <link rel="stylesheet" href="/site.css?v=20260624" />
 </head>
 <body>
-  <p class="muted"><a href="/">← Home</a> · <a href="/start">Account</a> · <a href="/pricing">Pricing</a></p>
-  <h1>Trust &amp; security</h1>
-  <p>Keel is repo-local agent state. Your goals live in <code>.keel/</code> in your repository — not in our training data.</p>
+  <header class="site-header">
+    <a class="logo" href="/"><span class="logo-mark">K</span> Keel</a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/start">Account</a>
+      <a href="/pricing">Pricing</a>
+      <a href="/trust" class="active">Trust</a>
+      <a class="nav-cta" href="/start">Get started</a>
+    </nav>
+  </header>
 
-  <h2>What we store</h2>
-  <ul>
-    <li><strong>Local (default):</strong> <code>state.json</code>, <code>snapshot.md</code>, hook logs — on your machine, in your repo.</li>
-    <li><strong>Keel Cloud (optional):</strong> If you run <code>keel cloud link</code>, we store your project state and snapshot to sync across machines. You control the API key.</li>
-  </ul>
+  <main class="page page-prose prose">
+    <div class="page-header">
+      <span class="eyebrow">Security</span>
+      <h1>Trust &amp; security</h1>
+      <p class="lead">Keel is repo-local agent state. Your goals live in <code>.keel/</code> in your repository — not in our training data.</p>
+    </div>
 
-  <h2>What we do not do</h2>
-  <ul>
-    <li>We do not use your goals or snapshots to train models.</li>
-    <li>We do not run your code on our servers (except optional cloud sync API).</li>
-    <li>Hooks run as <strong>your user</strong> on your machine — same trust model as Claude Code / Cursor hooks.</li>
-  </ul>
+    <h2>What we store</h2>
+    <ul>
+      <li><strong>Local (default):</strong> <code>state.json</code>, <code>snapshot.md</code>, hook logs — on your machine, in your repo.</li>
+      <li><strong>Keel Cloud (optional):</strong> If you run <code>keel cloud link</code>, we store your project state and snapshot to sync across machines. You control the API key.</li>
+    </ul>
 
-  <h2>Hooks &amp; enforcement</h2>
-  <p>Keel hooks can <strong>block</strong> tool use (dependency installs, edits in read-only mode) and <strong>block session end</strong> until an acceptance command passes. That is intentional — review <code>.claude/settings.json</code>, <code>.codex/hooks.json</code>, and <code>.cursor/hooks.json</code> after <code>keel init</code>.</p>
+    <h2>What we do not do</h2>
+    <ul>
+      <li>We do not use your goals or snapshots to train models.</li>
+      <li>We do not run your code on our servers (except optional cloud sync API).</li>
+      <li>Hooks run as <strong>your user</strong> on your machine — same trust model as Claude Code / Cursor hooks.</li>
+    </ul>
 
-  <h2>Signed policy (v0.4+)</h2>
-  <p>Keel cryptographically signs the <strong>goal policy</strong> (title, acceptance criteria, constraints). Default algorithm is <strong>ECDSA P-256</strong> (NIST secp256r1) — a <strong>FIPS 186-4 approved</strong> signature algorithm. Legacy Ed25519 policies still verify but are not FIPS-approved.</p>
-  <p><strong>Important:</strong> FIPS-approved <em>algorithm</em> ≠ FIPS 140 <em>validated module</em>. Keel ships pure Rust crypto for portability. Regulated deployments that require a validated cryptographic module should run signing in CI with OpenSSL FIPS / AWS-LC FIPS and distribute <code>policy.sig</code> to the team.</p>
-  <ul>
-    <li><strong>Trusted:</strong> <code>policy.pub</code>, <code>policy.sig</code>, and <code>policy.md</code> (signed goal only).</li>
-    <li><strong>Secret:</strong> <code>policy.key</code> — never commit; keep on a lead machine or CI secret.</li>
-    <li><strong>Untrusted:</strong> <code>snapshot.md</code> progress, decisions, and failure logs (agent-written).</li>
-    <li>With <code>policy.mode: required</code>, hooks <strong>block all tools</strong> if the goal is unsigned or tampered.</li>
-    <li>Team members run <code>keel policy trust &lt;pubkey&gt;</code> and commit <code>policy.sig</code> from your lead — they verify without holding the private key.</li>
-    <li>Cloud pull rejects unsigned goal changes when policy is required; local hooks enforce even if cloud state is stale.</li>
-  </ul>
-  <p>We do <strong>not</strong> claim bulletproof protection against a determined attacker with your repo write access and no policy keys. Signed policy raises the bar: agents cannot silently rewrite your mission via injected text in snapshot files.</p>
+    <h2>Hooks &amp; enforcement</h2>
+    <p>Keel hooks can <strong>block</strong> tool use (dependency installs, edits in read-only mode) and <strong>block session end</strong> until an acceptance command passes. Review <code>.claude/settings.json</code>, <code>.codex/hooks.json</code>, and <code>.cursor/hooks.json</code> after <code>keel init</code>.</p>
 
-  <h2>Keel Cloud access control</h2>
-  <p>Cloud projects are keyed, not public-by-link:</p>
-  <ul>
-    <li><strong>Dashboard URLs</strong> (<code>/dashboard/{id}</code>) only show a login gate. Goal text and snapshots load only after a valid project <strong>API key</strong> is entered (same key as <code>keel cloud link</code>).</li>
-    <li><strong>API reads and writes</strong> (<code>GET/POST/PUT /api/projects/…</code>) require <code>Authorization: Bearer &lt;api_key&gt;</code>. A UUID in the URL is not enough.</li>
-    <li><strong>Project creation</strong> may require a server-side create secret (<code>KEEL_CREATE_SECRET</code>) so bots cannot spam new projects.</li>
-    <li>Treat your API key like a password — anyone with it can read and change that project’s cloud state.</li>
-  </ul>
+    <h2>Signed policy (v0.4+)</h2>
+    <p>Keel cryptographically signs the <strong>goal policy</strong> (title, acceptance criteria, constraints). Default algorithm is <strong>ECDSA P-256</strong> (NIST secp256r1).</p>
+    <p><strong>Important:</strong> FIPS-approved <em>algorithm</em> ≠ FIPS 140 <em>validated module</em>. Keel ships pure Rust crypto for portability.</p>
+    <ul>
+      <li><strong>Trusted:</strong> <code>policy.pub</code>, <code>policy.sig</code>, and <code>policy.md</code> (signed goal only).</li>
+      <li><strong>Secret:</strong> <code>policy.key</code> — never commit.</li>
+      <li><strong>Untrusted:</strong> <code>snapshot.md</code> progress and failure logs (agent-written).</li>
+      <li>With <code>policy.mode: required</code>, hooks block all tools if the goal is unsigned or tampered.</li>
+    </ul>
 
-  <h2>Data deletion</h2>
-  <ul>
-    <li><strong>Local:</strong> Delete <code>.keel/</code> and remove Keel hook entries from agent settings.</li>
-    <li><strong>Cloud:</strong> Delete the project from your dashboard or stop syncing; contact support for team account deletion.</li>
-  </ul>
+    <h2>Keel Cloud access control</h2>
+    <ul>
+      <li>Dashboard URLs only show a login gate until a valid project API key is entered.</li>
+      <li>API reads/writes require <code>Authorization: Bearer &lt;api_key&gt;</code>.</li>
+      <li>Project creation may require server-side <code>KEEL_CREATE_SECRET</code>.</li>
+    </ul>
 
-  <h2>Contact</h2>
-  <p>Security issues: open a private issue on <a href="https://github.com/keel-agent/keel">GitHub</a> or email the address on your invoice (Team plan).</p>
+    <h2>Data deletion</h2>
+    <ul>
+      <li><strong>Local:</strong> Delete <code>.keel/</code> and remove Keel hook entries from agent settings.</li>
+      <li><strong>Cloud:</strong> Delete the project from your dashboard or contact support for team account deletion.</li>
+    </ul>
 
-  <p class="muted">Last updated: June 2026 · Keel v0.4</p>
+    <h2>Contact</h2>
+    <p>Security issues: open a private issue on <a href="https://github.com/bunyinu/keel">GitHub</a>.</p>
+    <p class="muted small">Last updated: June 2026 · Keel v0.4</p>
+  </main>
+
+  <footer class="site-footer">
+    <div class="inner">
+      <span class="brand">Keel — agent state in your repo</span>
+      <nav>
+        <a href="/">Home</a>
+        <a href="/pricing">Pricing</a>
+      </nav>
+    </div>
+  </footer>
 </body>
 </html>
