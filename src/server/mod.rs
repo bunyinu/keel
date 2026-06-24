@@ -125,8 +125,12 @@ async fn auth_project(headers: &HeaderMap, project_id: &str) -> Result<Project, 
     Ok(project)
 }
 
-async fn health() -> impl IntoResponse {
-    Json(json!({"ok": true, "service": "keel-cloud"}))
+async fn health(axum::extract::State(state): axum::extract::State<AppState>) -> impl IntoResponse {
+    Json(json!({
+        "ok": true,
+        "service": "keel-cloud",
+        "version": state.version,
+    }))
 }
 
 fn create_secret_ok(state: &AppState, headers: &HeaderMap) -> bool {

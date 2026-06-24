@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use uuid::Uuid;
 
@@ -81,8 +81,42 @@ pub fn pro_project_limit() -> i32 {
 
 pub fn init_db(path: &Path) -> Result<()> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("create database directory {}", parent.display()))?;
     }
+
+    let mut last_err: Option<anyhow::Error> = None;
+    for attempt in 1..=8 {
+        match try_init_db(path) {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                eprintln!("keel-server: database init attempt {attempt}/8 failed: {e:#}");
+                last_err = Some(e);
+                if path.exists() && attempt >= 3 {
+                    if let Err(be) = backup_unreadable_db(path) {
+                        eprintln!("keel-server: could not rotate database file: {be:#}");
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(400 * attempt as u64));
+            }
+        }
+    }
+    Err(last_err.unwrap()).context(format!("init database at {}", path.display()))
+}
+
+fn backup_unreadable_db(path: &Path) -> Result<()> {
+    let ts = chrono::Utc::now().format("%Y%m%d%H%M%S");
+    let backup = PathBuf::from(format!("{}.bak.{ts}", path.display()));
+    std::fs::rename(path, &backup)
+        .with_context(|| format!("rename {} to {}", path.display(), backup.display()))?;
+    eprintln!(
+        "keel-server: moved unreadable database to {}",
+        backup.display()
+    );
+    Ok(())
+}
+
+fn try_init_db(path: &Path) -> Result<()> {
     let conn = Connection::open(path).context("open database")?;
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS teams (
@@ -107,9 +141,9 @@ pub fn init_db(path: &Path) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_teams_license ON teams(license_key);",
     )?;
     migrate_schema(&conn)?;
+    migrate_orphan_projects_conn(&conn)?;
     DB.set(Mutex::new(conn))
         .map_err(|_| anyhow::anyhow!("database already initialized"))?;
-    migrate_orphan_projects()?;
     Ok(())
 }
 
@@ -151,21 +185,25 @@ fn ensure_column(conn: &Connection, table: &str, col: &str, ddl: &str) -> Result
     Ok(())
 }
 
-fn migrate_orphan_projects() -> Result<()> {
-    let c = conn()?;
-    let mut stmt = c.prepare("SELECT id, name FROM projects WHERE team_id IS NULL OR team_id = ''")?;
+fn migrate_orphan_projects_conn(conn: &Connection) -> Result<()> {
+    let mut stmt = conn.prepare("SELECT id, name FROM projects WHERE team_id IS NULL OR team_id = ''")?;
     let orphans: Vec<(String, String)> = stmt
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
         .collect::<Result<Vec<_>, _>>()?;
     drop(stmt);
     for (pid, pname) in orphans {
-        let team = create_team_internal(&pname, None, PLAN_FREE, free_project_limit())?;
-        c.execute(
+        let team = create_team_internal_on_conn(conn, &pname, None, PLAN_FREE, free_project_limit())?;
+        conn.execute(
             "UPDATE projects SET team_id = ?1 WHERE id = ?2",
             params![team.id, pid],
         )?;
     }
     Ok(())
+}
+
+fn migrate_orphan_projects() -> Result<()> {
+    let c = conn()?;
+    migrate_orphan_projects_conn(&c)
 }
 
 fn conn() -> Result<std::sync::MutexGuard<'static, Connection>> {
@@ -189,12 +227,22 @@ fn create_team_internal(
     plan: &str,
     max_projects: i32,
 ) -> Result<Team> {
+    let c = conn()?;
+    create_team_internal_on_conn(&c, name, email, plan, max_projects)
+}
+
+fn create_team_internal_on_conn(
+    conn: &Connection,
+    name: &str,
+    email: Option<&str>,
+    plan: &str,
+    max_projects: i32,
+) -> Result<Team> {
     let id = Uuid::new_v4().to_string();
     let license_key = new_team_license();
     let now = chrono::Utc::now().to_rfc3339();
     let email = email.map(str::trim).filter(|s| !s.is_empty());
-    let c = conn()?;
-    c.execute(
+    conn.execute(
         "INSERT INTO teams (id, name, email, plan, license_key, max_projects, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![id, name, email, plan, license_key, max_projects, now],

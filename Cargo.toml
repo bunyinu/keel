@@ -1,6 +1,6 @@
 [package]
 name = "keel"
-version = "0.4.3"
+version = "0.4.4"
 edition = "2021"
 description = "Repo-local agent state for Claude Code and Codex"
 license = "Apache-2.0"

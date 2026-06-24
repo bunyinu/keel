@@ -20,7 +20,7 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|_| PathBuf::from("/data/keel.db"));
 
     init_db(&db_path).with_context(|| format!("init database at {}", db_path.display()))?;
-    tracing::info!("database: {}", db_path.display());
+    tracing::info!("database ready at {}", db_path.display());
 
     let port: u16 = std::env::var("PORT")
         .ok()
