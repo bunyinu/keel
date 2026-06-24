@@ -19,15 +19,8 @@ async fn main() -> anyhow::Result<()> {
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("/data/keel.db"));
 
-    if let Err(e) = init_db(&db_path) {
-        eprintln!("keel-server: init {:?} failed: {e:#}", db_path);
-        let fallback = PathBuf::from("/tmp/keel.db");
-        eprintln!("keel-server: trying fallback {:?}", fallback);
-        init_db(&fallback).context("init fallback database at /tmp/keel.db")?;
-        tracing::warn!("using fallback database at {}", fallback.display());
-    } else {
-        tracing::info!("database: {}", db_path.display());
-    }
+    init_db(&db_path).with_context(|| format!("init database at {}", db_path.display()))?;
+    tracing::info!("database: {}", db_path.display());
 
     let port: u16 = std::env::var("PORT")
         .ok()

@@ -125,3 +125,11 @@ pre {
 .snapshot-pre { max-height: 320px; overflow-y: auto; margin: 0; }
 .policy-box p { margin: 0 0 .5rem; }
 .btn.small { padding: .4rem .75rem; font-size: .85rem; margin-top: .5rem; }
+
+.pricing-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.5rem; }
+@media (max-width: 700px) { .pricing-grid { grid-template-columns: 1fr; } }
+.card.featured { border-color: #3d7eff; }
+.price-tag { font-size: 2rem; font-weight: 700; margin: .35rem 0 1rem; }
+.price-tag span { font-size: 1rem; font-weight: 400; color: #8fa3bf; }
+.feature-list { padding-left: 1.2rem; color: #b8c5d9; margin: 0 0 1rem; }
+.feature-list li { margin: .45rem 0; }

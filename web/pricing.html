@@ -3,92 +3,78 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Keel Cloud — Pricing</title>
-  <style>
-    :root { font-family: system-ui, sans-serif; background: #0b0f14; color: #e8eef7; }
-    body { max-width: 880px; margin: 0 auto; padding: 2rem 1rem; }
-    h1 { font-size: 1.75rem; }
-    .sub { color: #8fa3bf; margin-bottom: 2rem; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-    @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
-    .card {
-      background: #141c28; border: 1px solid #2a3548; border-radius: 12px; padding: 1.5rem;
-    }
-    .card.pro { border-color: #3d7eff; }
-    .price { font-size: 2rem; font-weight: 700; margin: .5rem 0; }
-    .price span { font-size: 1rem; font-weight: 400; color: #8fa3bf; }
-    ul { padding-left: 1.2rem; color: #b8c5d9; }
-    li { margin: .4rem 0; }
-    a.btn, button {
-      display: inline-block; margin-top: 1rem; background: #3d7eff; color: #fff;
-      border: none; border-radius: 8px; padding: .65rem 1rem; text-decoration: none; cursor: pointer;
-    }
-    a.btn.secondary { background: #243044; }
-    input {
-      width: 100%; box-sizing: border-box; margin: .5rem 0 1rem; padding: .6rem;
-      background: #0b0f14; border: 1px solid #2a3548; border-radius: 6px; color: #e8eef7;
-    }
-    #upgrade-status { margin-top: 1rem; }
-    .ok { color: #7dcea0; } .err { color: #ff8a8a; }
-    nav a { color: #6cb6ff; margin-right: 1rem; }
-  </style>
+  <title>Keel — Pricing</title>
+  <link rel="stylesheet" href="/site.css" />
 </head>
 <body>
-  <nav><a href="/">Home</a><a href="/account">Account</a><a href="/pricing">Pricing</a></nav>
-  <h1>Pricing</h1>
-  <p class="sub">CLI + guardrails are free forever. Pay for <strong>Keel Team</strong> — fleet visibility and CI gates across repos.</p>
+  <header class="site-header">
+    <a class="logo" href="/">Keel</a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/start">Account</a>
+      <a href="/pricing" class="active">Pricing</a>
+      <a href="/trust">Trust</a>
+    </nav>
+  </header>
 
-  <div class="grid">
-    <div class="card">
-      <h2>Free</h2>
-      <div class="price">$0</div>
-      <ul>
-        <li>1 cloud project</li>
-        <li>Full CLI: hooks, compaction, guardrails</li>
-        <li>Web goal editor for one repo</li>
-      </ul>
-      <a class="btn secondary" href="/">Create free project</a>
+  <main class="page page-wide">
+    <h1>Pricing</h1>
+    <p class="lead">CLI + guardrails are free forever. Pay for <strong>Keel Team</strong> — fleet visibility and CI gates across repos.</p>
+
+    <div class="pricing-grid">
+      <section class="card">
+        <h2 class="card-title">Free</h2>
+        <div class="price-tag">$0</div>
+        <ul class="feature-list">
+          <li>1 cloud project</li>
+          <li>Full CLI: hooks, compaction, guardrails</li>
+          <li>Web goal editor for one repo</li>
+        </ul>
+        <a class="btn secondary" href="/start">Create free account</a>
+      </section>
+      <section class="card featured">
+        <h2 class="card-title">Team</h2>
+        <div class="price-tag">$15 <span>/ month</span></div>
+        <ul class="feature-list">
+          <li><strong>Fleet dashboard</strong> — every repo's goal, step, last sync</li>
+          <li>Up to <strong>50 repos</strong> on one team license</li>
+          <li><strong>CI-ready</strong> — <code>keel check</code> gates merges (acceptance + goal)</li>
+          <li>Web goal editor for PMs / leads across projects</li>
+        </ul>
+        <a id="stripe-link" class="btn primary" href="#" target="_blank" rel="noopener">Subscribe with Stripe →</a>
+      </section>
     </div>
-    <div class="card pro">
-      <h2>Team</h2>
-      <div class="price">$15 <span>/ month</span></div>
-      <ul>
-        <li><strong>Fleet dashboard</strong> — every repo’s goal, step, last sync</li>
-        <li>Up to <strong>50 repos</strong> on one team license</li>
-        <li><strong>CI-ready</strong> — <code>keel check</code> gates merges (acceptance + goal)</li>
-        <li>Web goal editor for PMs / leads across projects</li>
-      </ul>
-      <a id="stripe-link" class="btn" href="#" target="_blank" rel="noopener">Subscribe with Stripe →</a>
-    </div>
-  </div>
 
-  <div class="card" style="margin-top: 2rem;">
-    <h2>Already paid? Activate Pro</h2>
-    <p>Paste your <strong>team license</strong> (from project creation) and upgrade code from checkout email.</p>
-    <label>Team license</label>
-    <input id="team-license" placeholder="keel_team_..." />
-    <label>Upgrade code</label>
-    <input id="upgrade-code" placeholder="keel_pro_..." />
-    <button type="button" id="activate">Activate Pro</button>
-    <p id="upgrade-status"></p>
-  </div>
+    <section class="card" style="margin-top: 2rem">
+      <h2 class="card-title">Already paid? Activate Pro</h2>
+      <p class="muted">Paste your <strong>account key</strong> (from account creation) and upgrade code from checkout email.</p>
+      <label for="team-license">Account key</label>
+      <input id="team-license" placeholder="keel_team_…" autocomplete="off" />
+      <label for="upgrade-code">Upgrade code</label>
+      <input id="upgrade-code" placeholder="keel_pro_…" autocomplete="off" />
+      <button type="button" class="btn primary" id="activate" style="margin-top: 1rem">Activate Pro</button>
+      <p id="upgrade-status" class="muted" style="margin-top: 1rem"></p>
+    </section>
+  </main>
 
+  <script src="/app.js"></script>
   <script>
     const stripeDefault = "https://buy.stripe.com/test_keel_pro";
     document.getElementById("stripe-link").href =
       window.KEEL_STRIPE_PAYMENT_LINK || stripeDefault;
 
-    const saved = localStorage.getItem("keel_team");
-    if (saved) {
-      try { document.getElementById("team-license").value = JSON.parse(saved).license || ""; } catch (_) {}
+    const saved = KeelUI.getAccount();
+    if (saved && saved.license) {
+      document.getElementById("team-license").value = saved.license;
     }
 
     document.getElementById("activate").onclick = async () => {
       const team_license = document.getElementById("team-license").value.trim();
       const code = document.getElementById("upgrade-code").value.trim();
       const status = document.getElementById("upgrade-status");
+      status.className = "muted";
       if (!team_license || !code) {
-        status.textContent = "Team license and upgrade code required";
+        status.textContent = "Account key and upgrade code required";
         status.className = "err";
         return;
       }
@@ -103,8 +89,8 @@
         status.className = "err";
         return;
       }
-      localStorage.setItem("keel_team", JSON.stringify(data.team));
-      status.textContent = "Pro activated! Open team dashboard.";
+      KeelUI.saveAccount(data.team);
+      status.textContent = "Pro activated — open your account dashboard.";
       status.className = "ok";
     };
   </script>

@@ -129,13 +129,14 @@
   };
 
   KeelUI.saveAccount = function (team) {
+    const license = team.license || team.license_key || team.account_key || "";
     localStorage.setItem(
       "keel_account",
       JSON.stringify({
         id: team.id,
         name: team.name,
         email: team.email || "",
-        license: team.license,
+        license,
         plan: team.plan,
       }),
     );

@@ -217,14 +217,15 @@ pub fn create_team(name: &str, email: Option<&str>) -> Result<Team> {
 pub fn get_team_by_email_and_license(email: &str, license_key: &str) -> Result<Option<Team>> {
     let email = email.trim();
     let license_key = license_key.trim();
-    let c = conn()?;
-    let mut stmt = c.prepare(
-        "SELECT id, name, email, plan, license_key, max_projects, created_at
-         FROM teams WHERE lower(email) = lower(?1) AND license_key = ?2",
-    )?;
-    let mut rows = stmt.query(params![email, license_key])?;
-    if let Some(row) = rows.next()? {
-        return Ok(Some(team_from_row(&row)?));
+    if let Some(team) = get_team_by_license(license_key)? {
+        if let Some(stored) = team.email.as_deref() {
+            if stored.eq_ignore_ascii_case(email) {
+                return Ok(Some(team));
+            }
+        } else {
+            // Legacy accounts created before email was stored.
+            return Ok(Some(team));
+        }
     }
     Ok(None)
 }

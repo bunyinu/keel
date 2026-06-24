@@ -238,16 +238,32 @@ async fn upgrade_handler(Json(body): Json<UpgradeRequest>) -> Result<Json<Value>
     })))
 }
 
-async fn team_projects_handler(headers: HeaderMap) -> Result<Json<Value>, StatusCode> {
-    let key = extract_bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
+async fn team_projects_handler(headers: HeaderMap) -> Result<Response, StatusCode> {
+    let key = match extract_bearer(&headers) {
+        Some(k) => k,
+        None => {
+            return Ok((
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Account key required"})),
+            )
+                .into_response());
+        }
+    };
     let team = get_team_by_license(&key).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let team = team.ok_or(StatusCode::UNAUTHORIZED)?;
+    let Some(team) = team else {
+        return Ok((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Unknown account key — sign in again or create a new account"})),
+        )
+            .into_response());
+    };
     let projects =
         list_team_projects_owned(&team.id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(json!({
         "team": team_json(&team),
         "projects": projects,
-    })))
+    }))
+    .into_response())
 }
 
 async fn link_project_handler(

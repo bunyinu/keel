@@ -96,7 +96,18 @@
       const data = await res.json().catch(() => ({}));
       const box = document.getElementById("projects");
       if (!res.ok) {
-        box.innerHTML = `<p class="err">${data.error || "Could not load projects"}</p>`;
+        if (res.status === 401) {
+          box.innerHTML = `<p class="err">${escapeHtml(data.error || "Account key not recognized")}</p>
+            <p class="muted">Your browser saved an account key the server does not know — common after a deploy reset or if you created the account elsewhere.</p>
+            <p><a href="/start">Sign in again</a> · <a href="#" id="clear-account">Clear saved session</a></p>`;
+          document.getElementById("clear-account").onclick = (e) => {
+            e.preventDefault();
+            localStorage.removeItem("keel_account");
+            location.href = "/start";
+          };
+          return;
+        }
+        box.innerHTML = `<p class="err">${escapeHtml(data.error || "Could not load projects")}</p>`;
         return;
       }
       if (a.name !== data.team.name || data.team.email) {
