@@ -18,7 +18,7 @@ const POLICY_VERSION: u32 = 1;
 pub const DEFAULT_POLICY_ALGORITHM: &str = "ecdsa-p256";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PolicyAlgorithm {
+pub(crate) enum PolicyAlgorithm {
     /// ECDSA on NIST P-256 (secp256r1) — FIPS 186-4 approved algorithm.
     EcdsaP256,
     /// Legacy; verify-only for existing repos. Not a FIPS-approved algorithm.
@@ -116,7 +116,7 @@ struct KeyMaterial {
     secret_bytes: Option<Vec<u8>>,
 }
 
-pub fn parse_algorithm(s: &str) -> Result<PolicyAlgorithm> {
+pub(crate) fn parse_algorithm(s: &str) -> Result<PolicyAlgorithm> {
     match s.trim().to_ascii_lowercase().as_str() {
         "ecdsa-p256" | "p256" | "secp256r1" | "prime256v1" => Ok(PolicyAlgorithm::EcdsaP256),
         "ed25519" => Ok(PolicyAlgorithm::Ed25519),
@@ -348,7 +348,7 @@ pub fn init_policy_named(root: Option<&Path>, algorithm: &str) -> Result<()> {
     init_policy(root, parse_algorithm(algorithm)?)
 }
 
-pub fn init_policy(root: Option<&Path>, algorithm: PolicyAlgorithm) -> Result<()> {
+pub(crate) fn init_policy(root: Option<&Path>, algorithm: PolicyAlgorithm) -> Result<()> {
     let (pub_path, key_path, _) = policy_paths(root);
     fs::create_dir_all(pub_path.parent().unwrap())?;
 
@@ -662,6 +662,19 @@ pub fn write_policy_md(root: Option<&Path>) -> Result<std::path::PathBuf> {
     }
     fs::write(&path, text)?;
     Ok(path)
+}
+
+/// JSON for Keel Cloud dashboard (`policy.label`, `policy.ok`, etc.).
+pub fn policy_status_json(root: Option<&Path>) -> serde_json::Value {
+    let config = load_config(root).unwrap_or_default();
+    let status = verify_policy(root).unwrap_or(PolicyStatus::Off);
+    let (ok, detail) = doctor_detail(root);
+    serde_json::json!({
+        "mode": mode_label(&config.policy.mode),
+        "label": status.label(),
+        "ok": ok,
+        "detail": detail,
+    })
 }
 
 pub fn doctor_detail(root: Option<&Path>) -> (bool, String) {

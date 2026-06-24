@@ -18,36 +18,67 @@
   </header>
 
   <div id="key-banner" class="key-banner" style="display:none">
-    <div class="page">
-      <strong>Save your access key</strong> — shown once. Copy it before you leave.
+    <div class="page-wide">
+      <strong>Save your project access key</strong> — shown once.
       <pre id="key-banner-value"></pre>
       <button type="button" class="btn secondary" id="copy-key">Copy</button>
       <button type="button" class="btn secondary" id="dismiss-key">Got it</button>
     </div>
   </div>
 
-  <main class="page" id="content" style="display:none">
-    <h1 id="title">Project dashboard</h1>
-    <p class="dashboard-meta">Project <code>__PROJECT_ID__</code> · <span id="updated"></span></p>
-    <div class="dashboard-actions">
-      <a href="/dashboard/__PROJECT_ID__/edit">Edit goal</a>
-      · <a href="/account">Your account</a>
+  <main class="page-wide" id="content" style="display:none">
+    <div class="dash-header">
+      <div>
+        <h1 id="title">Project</h1>
+        <p class="dashboard-meta">Project <code id="pid">__PROJECT_ID__</code> · <span id="updated"></span></p>
+      </div>
+      <div class="dash-badges" id="badges"></div>
     </div>
-    <div class="card">
-      <h2>Connect your repo</h2>
-      <pre id="connect-cmd"></pre>
+
+    <div class="dash-actions">
+      <a class="btn primary" href="/dashboard/__PROJECT_ID__/edit">Edit goal</a>
+      <a class="btn secondary" href="/account">Fleet</a>
     </div>
-    <h2>Snapshot</h2>
-    <pre id="snapshot"></pre>
+
+    <div class="grid-2">
+      <section class="card">
+        <h2 class="card-title">Setup checklist</h2>
+        <div id="onboarding"></div>
+      </section>
+
+      <section class="card">
+        <h2 class="card-title">Policy</h2>
+        <div id="policy-detail" class="policy-box"></div>
+      </section>
+    </div>
+
+    <section class="card">
+      <h2 class="card-title">Connect your repo</h2>
+      <pre id="connect-cmd" class="code-block"></pre>
+      <div id="connect-copy"></div>
+    </section>
+
+    <div class="grid-2">
+      <section class="card">
+        <h2 class="card-title">Activity</h2>
+        <div id="changelog"></div>
+      </section>
+
+      <section class="card">
+        <h2 class="card-title">Snapshot</h2>
+        <div id="snapshot"></div>
+      </section>
+    </div>
   </main>
 
-  <p id="loading" class="page muted">Loading…</p>
-  <p id="error" class="page err" style="display:none"></p>
+  <p id="loading" class="page-wide muted">Loading…</p>
+  <p id="error" class="page-wide err" style="display:none"></p>
 
+  <script src="/app.js"></script>
   <script>
     const projectId = "__PROJECT_ID__";
     const storageKey = "keel_api_key_" + projectId;
-    const startUrl = "/account?link=" + encodeURIComponent(projectId);
+    const startUrl = "/start?link=" + encodeURIComponent(projectId);
 
     async function load() {
       const key = localStorage.getItem(storageKey);
@@ -73,30 +104,36 @@
       const data = await res.json();
       document.getElementById("loading").style.display = "none";
       document.getElementById("content").style.display = "block";
-      document.getElementById("title").textContent = data.name || "Project dashboard";
-      document.getElementById("updated").textContent = "updated " + (data.updated_at || "");
-      document.getElementById("snapshot").textContent = data.snapshot || "(empty)";
+      document.getElementById("title").textContent = data.name || "Project";
+      document.getElementById("updated").textContent = "updated " + (data.updated_at || "never");
+      document.getElementById("badges").innerHTML = KeelUI.policyBadge(data.policy || {});
+      document.getElementById("onboarding").innerHTML = KeelUI.renderOnboarding(data);
+      document.getElementById("policy-detail").innerHTML =
+        `<p>${KeelUI.policyBadge(data.policy || {})}</p>` +
+        `<p class="muted small">${KeelUI.escapeHtml((data.policy && data.policy.detail) || "Policy syncs when CLI pushes state.")}</p>`;
+      document.getElementById("changelog").innerHTML = KeelUI.renderChangelog(data.changelog);
+      document.getElementById("snapshot").innerHTML = KeelUI.renderSnapshotSections(data.snapshot);
+
       const base = location.origin;
-      document.getElementById("connect-cmd").textContent =
+      const cmd =
         "npm install -g @keel2026/cli\n" +
         "keel cloud link --url " + base + " --project " + projectId + " --key " + key + "\n" +
-        "cd your-repo && keel onboard \"your task\" --accept \"tests pass\"";
+        'keel onboard "your task" --accept "tests pass"';
+      document.getElementById("connect-cmd").textContent = cmd;
+      document.getElementById("connect-copy").innerHTML = KeelUI.copyButton(cmd, "Copy commands");
 
       const onceKey = sessionStorage.getItem("keel_show_key");
       if (onceKey) {
         const banner = document.getElementById("key-banner");
         document.getElementById("key-banner-value").textContent = onceKey;
         banner.style.display = "block";
-        document.getElementById("copy-key").onclick = () => {
-          navigator.clipboard.writeText(onceKey);
-        };
+        document.getElementById("copy-key").onclick = () => navigator.clipboard.writeText(onceKey);
         document.getElementById("dismiss-key").onclick = () => {
           sessionStorage.removeItem("keel_show_key");
           banner.style.display = "none";
         };
       }
     }
-
     load();
   </script>
 </body>

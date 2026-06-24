@@ -29,6 +29,7 @@
   <main class="page">
     <h1 id="account-title">Your account</h1>
     <p id="account-meta" class="dashboard-meta"></p>
+    <p id="account-email" class="muted small"></p>
     <p><a href="#" id="signout">Sign out</a></p>
 
     <section class="card" style="margin-top:1.5rem">
@@ -56,13 +57,14 @@
     </section>
   </main>
 
+  <script src="/app.js"></script>
   <script>
     window.KEEL_CREATE_SECRET = "__KEEL_CREATE_SECRET__";
     const createSecret = window.KEEL_CREATE_SECRET || "";
     const params = new URLSearchParams(location.search);
 
     function account() {
-      try { return JSON.parse(localStorage.getItem("keel_account") || ""); } catch (_) { return null; }
+      return KeelUI.getAccount();
     }
 
     function requireAccount() {
@@ -83,7 +85,10 @@
       if (!a) return;
       document.getElementById("account-title").textContent = a.name;
       document.getElementById("account-meta").textContent =
-        `${a.plan || "free"} plan · account key ends …${(a.license || "").slice(-6)}`;
+        `${a.plan || "free"} plan · account key …${(a.license || "").slice(-6)}`;
+      if (a.email) {
+        document.getElementById("account-email").textContent = a.email;
+      }
 
       const res = await fetch("/api/teams/projects", {
         headers: { Authorization: "Bearer " + a.license },
@@ -94,10 +99,12 @@
         box.innerHTML = `<p class="err">${data.error || "Could not load projects"}</p>`;
         return;
       }
-      if (a.name !== data.team.name) {
+      if (a.name !== data.team.name || data.team.email) {
         a.name = data.team.name;
+        if (data.team.email) a.email = data.team.email;
         localStorage.setItem("keel_account", JSON.stringify(a));
         document.getElementById("account-title").textContent = a.name;
+        if (a.email) document.getElementById("account-email").textContent = a.email;
       }
       for (const p of data.projects) storeProjectKey(p.id, p.api_key, p.name);
       if (!data.projects.length) {
@@ -106,13 +113,20 @@
       }
       const rows = data.projects.map(p => {
         const goal = p.goal_title ? escapeHtml(p.goal_title) : "<span class=\"muted\">(no goal)</span>";
+        const policy = p.policy_label
+          ? `<span class="badge ${p.policy_label === "valid" ? "ok" : "muted"}">${escapeHtml(p.policy_label)}</span>`
+          : "<span class=\"muted\">—</span>";
+        const step = p.current_step ? escapeHtml(p.current_step) : "<span class=\"muted\">—</span>";
         return `<tr>
           <td><a href="${p.dashboard_url}"><strong>${escapeHtml(p.name)}</strong></a></td>
           <td>${goal}</td>
+          <td class="muted small">${step}</td>
+          <td>${policy}</td>
+          <td class="muted small">${p.compactions || 0}</td>
           <td class="muted">${p.updated_at}</td>
         </tr>`;
       }).join("");
-      box.innerHTML = `<table class="project-table"><thead><tr><th>Project</th><th>Goal</th><th>Updated</th></tr></thead><tbody>${rows}</tbody></table>`;
+      box.innerHTML = `<table class="project-table"><thead><tr><th>Project</th><th>Goal</th><th>Step</th><th>Policy</th><th>Compact</th><th>Updated</th></tr></thead><tbody>${rows}</tbody></table>`;
     }
 
     function escapeHtml(s) {

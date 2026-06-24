@@ -37,10 +37,17 @@ pub fn push_state(root: Option<&Path>) -> Result<()> {
     let Some(config) = load_cloud_config(root)? else {
         return Ok(());
     };
-    let state_path = keel_dir(root).join(crate::paths::STATE_FILE);
-    let snapshot_path = keel_dir(root).join(crate::paths::SNAPSHOT_FILE);
+    let keel = keel_dir(root);
+    let state_path = keel.join(crate::paths::STATE_FILE);
+    let snapshot_path = keel.join(crate::paths::SNAPSHOT_FILE);
     let state_json = std::fs::read_to_string(&state_path).unwrap_or_else(|_| "{}".into());
     let snapshot_md = std::fs::read_to_string(&snapshot_path).unwrap_or_default();
+    let local_config = crate::state::load_config(root).unwrap_or_default();
+    let config_val = serde_json::to_value(&local_config)?;
+    let changelog_md = std::fs::read_to_string(keel.join(crate::paths::CHANGELOG_FILE))
+        .unwrap_or_default();
+    let changelog_tail = tail_text(&changelog_md, 80);
+    let policy = crate::policy::policy_status_json(root);
 
     let url = format!(
         "{}/api/projects/{}/sync",
@@ -50,6 +57,9 @@ pub fn push_state(root: Option<&Path>) -> Result<()> {
     let body = serde_json::json!({
         "state": serde_json::from_str::<serde_json::Value>(&state_json).unwrap_or(serde_json::json!({})),
         "snapshot": snapshot_md,
+        "config": config_val,
+        "changelog": changelog_tail,
+        "policy": policy,
     });
 
     let resp = ureq::post(&url)
@@ -60,6 +70,12 @@ pub fn push_state(root: Option<&Path>) -> Result<()> {
         anyhow::bail!("cloud sync failed: HTTP {}", resp.status());
     }
     Ok(())
+}
+
+fn tail_text(text: &str, max_lines: usize) -> String {
+    let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+    let start = lines.len().saturating_sub(max_lines);
+    lines[start..].join("\n")
 }
 
 pub fn pull_state(root: Option<&Path>) -> Result<()> {

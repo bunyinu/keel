@@ -1,0 +1,1 @@
+`server.js` already uses `PORT = 7429` and returns `{"nexus":"online","ping":true}` on `GET /`. No fix needed.

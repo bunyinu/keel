@@ -1,351 +1,736 @@
-# Keel — Project Handoff
+# Keel — Full Handoff (rebuild from scratch)
 
-**Version:** 0.3.1 (Rust CLI + npm shim + Keel Cloud on Render)  
-**Repo:** `compo1` (Keel)  
-**Last updated:** 2026-06-22  
-**Audience:** Next owner, co-founder, or contractor taking Keel to market
-
----
-
-## 1. Executive summary
-
-**Keel is repo-local agent state for Claude Code and Codex** — a goal file in `.keel/` that survives compaction, plus hooks in `.claude/` / `.codex/` that re-inject it and optionally **block** bad tool use (loop breaker, constraint guard) and **block session end** until acceptance tests pass.
-
-**Core idea (do not deviate):** Task context lives in the **git repo**, not the chat transcript. Same state across Claude and Codex. Enforcement, not reminders.
-
-**Business model:**
-
-| Tier | Price | Value |
-|------|-------|-------|
-| Free | $0 | Local CLI + 1 cloud project |
-| Team | $15/mo | Fleet dashboard, 50 repos, `keel check` in CI |
-
-**Live:** https://keel-cloud.onrender.com
-
-**What’s proven:** A clean A/B compaction demo shows Claude **keeps port 8842 with Keel** and **defaults to 3000 without** after forced `/compact`. Artifacts: `examples/keel-compact-demo/`.
-
-**What’s not proven:** Paid conversion, retention, or that teams will adopt repo-owned goals as process.
+**Version:** 0.4.1  
+**Repo:** https://github.com/bunyinu/keel  
+**npm:** `@keel2026/cli` (org `keel2026`, publisher `bunyinu`)  
+**Cloud:** https://keel-cloud.onrender.com  
+**Last updated:** 2026-06-23  
+**Purpose:** Enough detail that a new engineer can **rebuild, deploy, and ship** Keel as it exists today — CLI, npm, and cloud — without oral history.
 
 ---
 
-## 2. The two directories (critical)
+## Table of contents
 
-New owners and users confuse these constantly. **Both are required for the full loop.**
+1. [What you are rebuilding (3 artifacts)](#1-what-you-are-rebuilding-3-artifacts)
+2. [Prerequisites & accounts](#2-prerequisites--accounts)
+3. [Repo map](#3-repo-map)
+4. [Rebuild the Rust CLI](#4-rebuild-the-rust-cli)
+5. [Rebuild the npm distribution](#5-rebuild-the-npm-distribution)
+6. [Rebuild Keel Cloud (server)](#6-rebuild-keel-cloud-server)
+7. [Deploy Keel Cloud to Render](#7-deploy-keel-cloud-to-render) ← **deployment**
+8. [Release pipeline (tag → npm + GitHub)](#8-release-pipeline-tag--npm--github)
+9. [Secrets & environment variables](#9-secrets--environment-variables)
+10. [End-to-end verification checklist](#10-end-to-end-verification-checklist)
+11. [Cloud HTTP API](#11-cloud-http-api)
+12. [SQLite schema](#12-sqlite-schema)
+13. [Hook wiring (agent integration)](#13-hook-wiring-agent-integration)
+14. [Product summary](#14-product-summary)
+15. [Demos & proof assets](#15-demos--proof-assets)
+16. [Sales narrative](#16-sales-narrative)
+17. [Failed approaches (do not retry)](#17-failed-approaches-do-not-retry)
+18. [Open decisions](#18-open-decisions)
+19. [Key links](#19-key-links)
 
-| | `.keel/` | `.claude/` / `.codex/` |
-|--|----------|-------------------------|
-| **Role** | **Memory** — durable state | **Wiring** — when to run Keel |
-| **Created by** | `keel init` | `keel init` (merges hooks) |
-| **Key files** | `state.json`, `snapshot.md`, `config.json`, `attempts.jsonl` | `settings.json` / `hooks.json` |
-| **Without the other** | Goal on disk; nothing restores it after compact | Hooks run; snapshot says “No active goal” |
+---
+
+## 1. What you are rebuilding (3 artifacts)
+
+Keel is **not one binary**. It is three shipped artifacts:
+
+| # | Artifact | What it is | How users get it |
+|---|----------|------------|------------------|
+| **A** | `keel` CLI | Rust binary: goals, hooks, policy, cloud sync | `npm install -g @keel2026/cli` |
+| **B** | npm packages | Node shim + 4 platform native binaries | Published on tag via GitHub Actions |
+| **C** | `keel-server` | Rust Axum server + SQLite + static `web/` | Docker on Render |
+
+**Data flow:**
 
 ```
-User sets goal → .keel/state.json + snapshot.md
-                        ↑
-Compaction clears chat ─┘
-                        │
-.claude hooks → keel hook pre-compact / session-start → inject snapshot
+Developer repo                    Keel Cloud (Render)
+─────────────                    ───────────────────
+.keel/state.json  ──push/pull──►  SQLite projects.state_json
+.keel/snapshot.md                 projects.snapshot_md
+.claude/settings.json             (not stored — local hooks only)
+     │
+     └── hooks call `keel hook …` on compact / tool / stop
 ```
 
-**Anti-pattern:** Global Keel hooks in `~/.claude/settings.json` without `keel init` + goal in each repo → empty snapshots, false sense of “using Keel.”
+**Core product idea (do not deviate):** Task context lives in the **git repo** (`.keel/`), not the chat. Hooks **reinject** on Claude `/compact` and **block** bad tools / premature stop. Optional cloud = fleet dashboard + sync.
 
 ---
 
-## 3. Architecture map
+## 2. Prerequisites & accounts
+
+### Machine
+
+| Tool | Version | Why |
+|------|---------|-----|
+| Rust | stable (2021 edition) | CLI + server |
+| Node.js | 18+ | npm shim, publish scripts |
+| cargo | comes with Rust | build |
+| git | any | release tags |
+| Docker | optional | local server smoke test |
+
+### Accounts (production)
+
+| Service | Used for |
+|---------|----------|
+| **GitHub** | Source repo, Actions release, GitHub Releases |
+| **npm** | Org `@keel2026`, packages `@keel2026/cli` + 4 platform packages |
+| **Render** | Host `keel-cloud` (Docker web service + persistent disk) |
+| **Stripe** | Team plan payment link (env on Render) |
+
+### npm packages to create (one-time)
+
+If rebuilding npm from zero, create these under org `keel2026`:
+
+- `@keel2026/cli` — main package (shim only)
+- `@keel2026/linux-x64-gnu`
+- `@keel2026/linux-arm64-gnu`
+- `@keel2026/darwin-x64`
+- `@keel2026/darwin-arm64`
+
+Set `NPM_TOKEN` in GitHub repo secrets for automated publish.
+
+---
+
+## 3. Repo map
 
 ```
-npm (@keel2026/cli)          Rust binaries
-        │                      ├── keel (CLI + hooks)
-        └──────────────────────└── keel-server (Axum + SQLite)
-                                         │
-                                         ▼
-                              Keel Cloud (Render)
-                              /, /pricing, /team, /dashboard/:id
-```
-
-### Rust modules (`src/`)
-
-| Module | Purpose |
-|--------|---------|
-| `main.rs` | CLI: init, goal, progress, tui, check, cloud, doctor, hook |
-| `install.rs` | `keel init` — `.keel/`, merge hooks, CLAUDE.md snippets |
-| `hooks.rs` | Hook entrypoint (pre/post compact, session-start, pre/post tool, stop) |
-| `state.rs` | `KeelState`, `KeelConfig`, persistence |
-| `snapshot.rs` | Renders `snapshot.md` (goal, progress, decisions, do-not-retry) |
-| `constraints.rs` | PreToolUse: no deps, read-only, banned keywords |
-| `loop_breaker.rs` | Blocks repeated identical failures |
-| `acceptance.rs` | Stop hook: run shell command before agent ends |
-| `check.rs` | CI gate: init + goal + acceptance (+ optional cloud ping) |
-| `cloud.rs` | push/pull to Keel Cloud |
-| `goal_edit.rs` | Shared `GoalForm` (CLI / TUI / web API) |
-| `tui.rs` | ratatui goal editor |
-| `doctor.rs` | Diagnostics |
-| `server/` | Teams, projects, billing upgrade, dashboards |
-
-### Distribution
-
-- **Users:** `npm install -g @keel2026/cli`
-- **Release:** tag `v*.*.*` → GitHub Actions → platform binaries + npm publish
-- **Contributors:** `cargo test`, `./scripts/stage-npm.sh`, `./scripts/release.sh --install-global`
-
-### Data layout (per repo)
-
-```
-.keel/
-  state.json        # goal, progress, decisions, compaction/session counts
-  snapshot.md       # injected into agent context
-  attempts.jsonl    # loop breaker log
-  changelog.jsonl   # audit events
-  config.json       # loop breaker thresholds, acceptance gate
-  cloud.json        # optional cloud link
+compo1/  (keel)
+├── Cargo.toml              # version source of truth; two bins: keel, keel-server
+├── src/
+│   ├── main.rs             # CLI entry
+│   ├── lib.rs              # module exports
+│   ├── bin/keel_server.rs  # cloud server entry
+│   ├── install.rs          # keel init — hooks + CLAUDE.md merge
+│   ├── hooks.rs            # keel hook <event> — agent callback
+│   ├── state.rs            # KeelState, KeelConfig
+│   ├── snapshot.rs         # snapshot.md renderer
+│   ├── policy.rs           # signed goals (ECDSA P-256 default)
+│   ├── constraints.rs      # PreToolUse constraint guard
+│   ├── loop_breaker.rs     # PreToolUse retry block
+│   ├── acceptance.rs       # Stop hook gate
+│   ├── check.rs            # keel check (CI)
+│   ├── cloud.rs            # push/pull to Keel Cloud
+│   ├── server/             # Axum routes + db.rs (SQLite)
+│   └── …
+├── web/                    # Static HTML/CSS served by keel-server
+│   ├── index.html          # landing
+│   ├── start.html          # sign-in / create project
+│   ├── pricing.html, trust.html, team.html
+│   ├── dashboard.html, dashboard-edit.html
+│   ├── demo.gif            # homepage embed
+│   └── site.css
+├── npm/
+│   ├── keel-cli/           # @keel2026/cli — bin/keel.js shim
+│   └── platforms/*/        # per-OS native binary packages
+├── scripts/
+│   ├── stage-npm.sh        # copy release keel → npm/platforms
+│   ├── release.sh          # local: test + stage + optional global install
+│   └── deploy-render.sh    # trigger Render deploy via API
+├── Dockerfile              # builds keel-server for Render
+├── render.yaml             # Render Blueprint spec
+├── .github/workflows/
+│   ├── ci.yml              # PR: fmt, clippy, test, npm shim verify
+│   └── release.yml         # tag v*.*.* → binaries + npm publish
+└── examples/
+    ├── nexus-ping-demo/    # fair compaction A/B (use this for sales)
+    ├── keel-compact-demo/  # legacy demo
+    └── github-keel-check.yml
 ```
 
 ---
 
-## 4. Current product state (v0.3)
+## 4. Rebuild the Rust CLI
 
-### Shipped (tagged v0.3.1)
-
-- Rust CLI with sub-ms hooks
-- npm global install (linux/mac, x64/arm64)
-- Claude Code + Codex hook installers
-- Constraint guard, loop breaker, acceptance gate (Stop)
-- TUI goal editor
-- Keel Cloud: project create, sync, web goal edit, team fleet, Stripe upgrade codes
-- `keel doctor`, `keel update`
-
-### In working tree (not necessarily released)
-
-- `keel check` + `examples/github-keel-check.yml` (CI gate)
-- Fleet fields on team dashboard (`goal_title`, `current_step` in `server/db.rs`)
-- Compaction demo (`examples/keel-compact-demo/`)
-- README v0.3 positioning vs Tasks API / Agentpack
-
-### Known rough edges
-
-- Keel goal in this repo is still a placeholder (“Do not deviate form the core idea”)
-- Stripe payment link can be placeholder env on server
-- `npm test` failed once in attempts log — do not blindly retry as acceptance gate
-- Partial `.keel/` dirs possible (e.g. only `attempts.jsonl`) if hooks ran without `keel init`
-- No Cursor hook path (large distribution gap)
-- Global vs project hook story is confusing; doctor should warn harder
-
----
-
-## 5. Competitive position
-
-| | **Keel** | **Claude Tasks API** | **Agentpack** |
-|--|----------|----------------------|---------------|
-| State location | `.keel/` in repo (git) | `~/.claude/tasks/` | `.agentpack/` |
-| Agents | Claude + Codex | Claude only | Any MCP client |
-| Tool blocks | Yes | No | No |
-| Stop gate (tests) | Yes | No | No |
-| Hosted team UI | Yes ($15) | No | No |
-
-**When Keel wins:** Repo-owned, enforceable goal shared across Claude *and* Codex, CI gate, team dashboard.
-
-**When Keel loses:** Claude-only shops that want native task graphs → Tasks API (v2.1.16+). Rich ledger / MCP-first → Agentpack.
-
-**Strategic line:** Keel complements; it does not replace `CLAUDE.md` or full task systems.
-
----
-
-## 6. Market goal: 1% of Claude Code + Codex users
-
-### What “1%” means (honest math)
-
-Public MAU for Claude Code and Codex CLI is **not disclosed**. Planning ranges:
-
-| Assumption | Combined active agent-in-terminal users | **1% install base** | **5% of those on Team ($15)** |
-|------------|----------------------------------------|---------------------|-------------------------------|
-| Conservative | 200,000 | 2,000 | 100 → **$1.5k MRR** |
-| Mid | 500,000 | 5,000 | 250 → **$3.75k MRR** |
-| Aggressive | 2,000,000 | 20,000 | 1,000 → **$15k MRR** |
-
-**1% distribution** is an **install / init** target, not revenue. Revenue needs:
-
-1. **Init** (`keel init` in a real repo)
-2. **Goal set** (otherwise product is inert)
-3. **Habit** (hooks on every session)
-4. **Upgrade trigger** (2+ repos, CI, or manager visibility)
-
-**Realistic year-1 success:** 2k–5k inits, 200–500 paying teams, one public case study — not 20k paid seats.
-
----
-
-## 7. What’s missing to stand the market
-
-### A. Product (must-have for 1%)
-
-| Gap | Why it blocks adoption | Priority |
-|-----|------------------------|----------|
-| **Cursor / IDE hooks** | Huge share of “agent dev” is Cursor, not only Claude Code/Codex CLI | P0 |
-| **One-command onboarding** | `keel init` + goal should be one guided flow; empty goal = broken | P0 |
-| **Partial `.keel` detection** | `doctor` must fail if only `attempts.jsonl` exists | P1 |
-| **Landing embeds compaction demo** | Best proof asset is buried in `examples/` | P0 |
-| **Production billing** | Real Stripe, not placeholder link; self-serve receipt | P1 |
-| **Trust page** | Security, data handling, “we don’t train on your goals” | P1 |
-| **`keel check` in docs + template** | CI story is the Team upsell | P1 |
-| **Codex trust UX** | Users must `/hooks` trust once — easy to miss | P2 |
-| **Windows** | No npm platform package yet | P2 |
-
-### B. Go-to-market (must-have for 1%)
-
-| Gap | Action |
-|-----|--------|
-| **No public launch** | Show HN + one long-form post with GIF demo |
-| **No case studies** | 3 pilot teams (free Team 3 months) → quotes + logos |
-| **No single wedge message** | Lead: *“Goal survives compaction; CI enforces it”* — not “agent state platform” |
-| **No funnel metrics** | Track: npm installs → `keel init` → goal set → cloud link → paid |
-| **No content** | One playbook: “Gate PRs on agent acceptance criteria” |
-| **Founder dogfood** | This repo’s `.keel` should be a real shipping goal |
-
-### C. Distribution (how you actually reach 1%)
-
-| Channel | Fit |
-|---------|-----|
-| **npm** (`@keel2026/cli`) | Primary; matches Codex install mental model |
-| **GitHub Action / template** | `keel check` on PR → viral in eng teams |
-| **Claude Code / Codex communities** | Discord, X, r/ClaudeAI — compaction pain posts |
-| **Dev influencers** | 30s GIF demo, not feature matrix |
-| **NOT yet** | Paid ads, enterprise sales, MCP server (different product) |
-
-### D. Organizational / ops
-
-| Gap | Notes |
-|-----|-------|
-| Analytics | npm download counts only; no product telemetry (privacy-positive but blind) |
-| Support | No docs site beyond README; no Discord |
-| Legal | Apache-2.0 OSS; cloud ToS / privacy policy thin or missing |
-| On-call | Single Render instance + SQLite — fine for early, not for “team control plane” SLA |
-
----
-
-## 8. Recommended roadmap
-
-### 0–30 days (credibility)
-
-- [ ] Ship uncommitted `keel check` + CI example in a release
-- [ ] Put compaction GIF on https://keel-cloud.onrender.com and README
-- [ ] Show HN: “Repo goal survives Claude /compact”
-- [ ] Fix `keel doctor` for partial `.keel` and “hooks but no goal”
-- [ ] Dogfood: real goal in `compo1/.keel`
-- [ ] 10 outbound DMs to eng leads using Claude Code on 3+ repos
-
-### 31–60 days (conversion)
-
-- [ ] 3 pilot teams with written quotes
-- [ ] Stripe live + upgrade flow tested end-to-end
-- [ ] Security / privacy one-pager linked from pricing
-- [ ] `keel onboard` (init + interactive goal + optional cloud link)
-- [ ] npm weekly install tracking + simple landing analytics
-
-### 61–90 days (1% path)
-
-- [ ] Cursor hook spike or documented manual hook path
-- [ ] GitHub Action published (`keel-agent/check-action` or official example)
-- [ ] 2k+ cumulative inits (proxy: npm installs × estimated init rate)
-- [ ] 50+ paying Team seats OR clear pivot signal
-
----
-
-## 9. Sales narrative (use verbatim)
-
-**One sentence:**
-
-> Keel Team is the control plane for AI agents in your repos — see every goal, gate merges with `keel check`, same guardrails in Claude and Codex.
-
-**Buyer:** Eng lead / 3–15 dev shop, multiple repos, Claude Code or Codex.
-
-**Pain:** Agents forget goals after compaction, repeat failed commands, install deps, no cross-repo visibility.
-
-**Proof:** `examples/keel-compact-demo/demo.gif` — same task, force `/compact`, port 8842 vs 3000.
-
-**Upgrade moment:** Second repo linked, or manager asks “which project is stuck?”
-
----
-
-## 10. Operations cheat sheet
+### Step 1 — Clone and build
 
 ```bash
-# Dev
-cargo test
-./scripts/stage-npm.sh
-./scripts/release.sh --install-global
-
-# Release
-git tag v0.3.2 && git push origin v0.3.2
-
-# Cloud server locally
-cargo run --release --bin keel-server
-# Env: PORT, KEEL_DB_PATH, KEEL_STRIPE_PAYMENT_LINK, KEEL_UPGRADE_CODES
-
-# User install
-npm install -g @keel2026/cli
-cd your-repo && keel init
-keel goal set "..." --accept "tests pass"
+git clone https://github.com/bunyinu/keel.git
+cd keel
+cargo build --release
 ```
 
-**Hooks:**
+Produces:
 
-- Claude: `.claude/settings.json`
-- Codex: `.codex/hooks.json` (trust via `/hooks`)
-- Override binary: `KEEL_BIN`
+- `target/release/keel` — CLI + hooks
+- `target/release/keel-server` — cloud server
 
-**Commit guidance:** Commit `state.json` + `snapshot.md` for team goals; optional-gitignore `attempts.jsonl`, `changelog.jsonl`.
+### Step 2 — Run tests
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --all-targets -- -D warnings
+cargo test --all-targets
+```
+
+Or use the helper:
+
+```bash
+./scripts/release.sh          # test + stage npm
+./scripts/release.sh --skip-tests --install-global
+```
+
+### Step 3 — Use in a project
+
+```bash
+cd /path/to/your-app
+/path/to/keel/target/release/keel init
+keel onboard "My task" --accept "tests pass" --constraint "no new deps"
+keel config set --acceptance "npm test"
+```
+
+### What `keel init` writes
+
+| Path | Action |
+|------|--------|
+| `.keel/config.json` | Defaults (loop breaker, snapshot limits) |
+| `.keel/state.json` | Empty goal until `keel goal set` |
+| `.keel/snapshot.md` | Generated from state |
+| `.claude/settings.json` | **Merges** Keel hooks (does not delete yours) |
+| `.codex/hooks.json` | Merges Keel hooks |
+| `.cursor/hooks.json` | Merges Keel hooks |
+| `CLAUDE.md` / `AGENTS.md` | **Appends** `## Keel` snippet if missing |
+
+### Default `.keel/config.json` (after init)
+
+```json
+{
+  "loop_breaker": { "max_same_failure": 2, "window_minutes": 60 },
+  "acceptance_gate": { "enabled": false, "command": "" },
+  "policy": { "mode": "off" },
+  "snapshot_max_lines": 120,
+  "snapshot_max_decisions": 8,
+  "snapshot_max_failures": 6
+}
+```
 
 ---
 
-## 11. Experiments & evidence
+## 5. Rebuild the npm distribution
 
-### Compaction A/B (clean run, 2026-06-22)
+### How it works
 
-- Global `~/.claude` Keel hooks **removed**
-- **without-keel:** no `.keel`, no `.claude` hooks → PORT **3000** after `/compact`
-- **with-keel:** `keel init` + goal → PORT **8842** after `/compact`
+`@keel2026/cli` is **not** the Rust binary. It is a **Node shim** (`npm/keel-cli/bin/keel.js`) that:
 
-See `examples/keel-compact-demo/RESULTS.md`.
+1. Resolves `@keel2026/<platform>` optional dependency, OR
+2. Falls back to `npm/keel-cli/vendor/keel` (local dev), OR
+3. Falls back to `target/release/keel` (dev), OR
+4. Uses `KEEL_BIN` env override
 
-### Failed approaches (do not retry)
+**Critical:** `bin/keel.js` must stay a **JavaScript shim**. Never commit a compiled ELF as `keel.js` (v0.4.0 bug).
 
-- `npm test` as acceptance gate in this repo without fixing tests first
-- “Without Keel” tests while global Keel hooks still enabled — conflates hooks vs goal
+### Stage locally
+
+```bash
+./scripts/stage-npm.sh
+# copies target/release/keel → npm/platforms/<host>/bin/keel
+# copies → npm/keel-cli/vendor/keel
+# syncs version from Cargo.toml
+
+node npm/keel-cli/scripts/verify-shim.js
+```
+
+### Install globally from local tree
+
+```bash
+npm install -g ./npm/keel-cli
+keel --version   # must match Cargo.toml
+keel policy --help
+```
+
+### Platform package layout
+
+Each `npm/platforms/linux-x64-gnu/package.json`:
+
+```json
+{
+  "name": "@keel2026/linux-x64-gnu",
+  "version": "0.4.1",
+  "os": ["linux"],
+  "cpu": ["x64"],
+  "bin": { "keel": "bin/keel" }
+}
+```
+
+Only `bin/keel` (native executable) is published in platform packages.
 
 ---
 
-## 12. Open decisions for next owner
+## 6. Rebuild Keel Cloud (server)
 
-1. **Cursor:** build first-class hooks vs stay Claude+Codex only?
-2. **Telemetry:** opt-in `keel doctor --anon-stats` vs stay blind?
-3. **OSS vs cloud:** keep cloud proprietary on top of Apache CLI?
-4. **Pricing:** $15/mo Team — raise at 50 repos or add seat-based?
-5. **Tasks API:** position as complement forever, or integrate (read task list into snapshot)?
+### Run locally
+
+```bash
+export PORT=8080
+export KEEL_DB_PATH=/tmp/keel-local.db
+# optional:
+export KEEL_STRIPE_PAYMENT_LINK=https://buy.stripe.com/...
+export KEEL_CREATE_SECRET=my-secret-for-create
+export KEEL_UPGRADE_CODES=promo1,promo2
+
+cargo run --release --bin keel-server
+```
+
+Open http://localhost:8080
+
+### Docker (same as Render)
+
+```bash
+docker build -t keel-server .
+docker run -p 8080:8080 \
+  -e KEEL_DB_PATH=/data/keel.db \
+  -v keel-data:/data \
+  keel-server
+```
+
+### What the server does
+
+- Serves static pages from `web/` (embedded fallback for `demo.gif` in binary)
+- SQLite at `KEEL_DB_PATH` (teams + projects)
+- REST API for project create, sync, goal edit, team fleet, billing upgrade
+- Health check at `GET /health` → `{"ok":true,"service":"keel-cloud"}`
+
+### Server entry (`src/bin/keel_server.rs`)
+
+- Reads `PORT` (Render sets this; default 8080)
+- Tries `KEEL_DB_PATH`, falls back to `/tmp/keel.db` if `/data` fails
+- Listens `0.0.0.0:PORT`
 
 ---
 
-## 13. Verdict for the next owner
+## 7. Deploy Keel Cloud to Render
 
-**Technically:** v0.3 delivers the core loop. The compaction demo is real. Ship `keel check` and the GIF before anything else.
+This is the **production deployment path**. CLI/npm do **not** auto-deploy; only the server runs on Render.
 
-**Commercially:** You are not blocked by engineering for first 100 paying teams. You are blocked by **distribution, proof, and onboarding clarity** (`.keel` + `.claude` + goal in one story).
+### Architecture on Render
 
-**1% is achievable** only as **thousands of repo inits**, not as hype — npm + Show HN + CI template + 3 case studies. Without Cursor and without a public launch, ceiling is far below 1%.
+```
+GitHub push (main) ──► Render Web Service "keel-cloud"
+                         runtime: docker
+                         Dockerfile → keel-server
+                         disk: 1GB mounted at /data
+                         SQLite: /data/keel.db
+                         health: GET /health
+                         URL: https://keel-cloud.onrender.com
+```
 
-**Do not build** a full task graph, MCP server, or enterprise SSO before 10 teams pay $15/mo.
+### Files involved
+
+| File | Role |
+|------|------|
+| [`render.yaml`](render.yaml) | Blueprint: service name, env vars, disk, health check |
+| [`Dockerfile`](Dockerfile) | Multi-stage Rust build → debian-slim + `keel-server` + `web/` |
+| [`scripts/deploy-render.sh`](scripts/deploy-render.sh) | API trigger for redeploy |
+
+### First-time deploy (Blueprint)
+
+1. Push repo to GitHub (`bunyinu/keel` or your fork).
+2. Log in to https://dashboard.render.com
+3. **New → Blueprint** → connect GitHub repo
+4. Render reads `render.yaml` and creates:
+   - Web service `keel-cloud`
+   - Docker build from `Dockerfile`
+   - Persistent disk `keel-data` → `/data`
+5. In Render dashboard → **Environment**, set secrets (see [§9](#9-secrets--environment-variables)):
+   - `KEEL_STRIPE_PAYMENT_LINK`
+   - `KEEL_UPGRADE_CODES`
+   - `KEEL_CREATE_SECRET`
+6. Wait for deploy. Verify:
+   ```bash
+   curl https://keel-cloud.onrender.com/health
+   ```
+
+### Redeploy after code changes
+
+**Option A — Git auto-deploy (recommended):**  
+Push to `main` → Render rebuilds Docker image.
+
+**Option B — API script:**
+
+```bash
+export RENDER_API=rnd_xxxxxxxxxxxx
+# optional: export RENDER_OWNER_ID=tea-xxxxx
+# optional: export RENDER_SERVICE_NAME=keel-cloud
+./scripts/deploy-render.sh
+```
+
+Script behavior:
+
+- If service exists → `POST /v1/services/{id}/deploys`
+- If not → prints Blueprint instructions
+
+### Dockerfile notes (why it looks weird)
+
+- **Runs as root** so Render persistent disk at `/data` is writable
+- `mkdir -p /data` in image
+- `COPY web` for static assets
+- Only builds `--bin keel-server` (not `keel` CLI)
+
+### Render free tier caveats
+
+- Cold starts on free plan
+- Single instance + SQLite — not HA
+- Disk persists across deploys; backup `keel.db` before risky migrations
+
+### Connect a local repo to cloud (after deploy)
+
+```bash
+# On website: https://keel-cloud.onrender.com/start → create project → copy id + api_key
+
+keel cloud link \
+  --url https://keel-cloud.onrender.com \
+  --project YOUR_PROJECT_ID \
+  --key YOUR_API_KEY
+
+keel cloud push
+```
+
+Creates `.keel/cloud.json` (usually gitignored).
 
 ---
 
-## 14. Key links
+## 8. Release pipeline (tag → npm + GitHub)
+
+### Trigger
+
+```bash
+# bump version in Cargo.toml first (source of truth)
+git commit -am "Release v0.4.2"
+git tag v0.4.2
+git push origin main
+git push origin v0.4.2
+```
+
+### GitHub Actions (`.github/workflows/release.yml`)
+
+On tag `v*.*.*`:
+
+1. **Matrix build** (4 targets):
+   - `x86_64-unknown-linux-gnu` → `@keel2026/linux-x64-gnu`
+   - `aarch64-unknown-linux-gnu` → `@keel2026/linux-arm64-gnu`
+   - `x86_64-apple-darwin` → `@keel2026/darwin-x64`
+   - `aarch64-apple-darwin` → `@keel2026/darwin-arm64`
+2. `./scripts/stage-npm.sh --target … --npm-pkg …`
+3. Upload artifacts
+4. **publish job:**
+   - Merge platform packages
+   - `node npm/keel-cli/scripts/sync-version.js $VERSION`
+   - GitHub Release with tarballs
+   - `node npm/keel-cli/scripts/prep-publish.js $VERSION`
+   - `npm publish` each platform package + `@keel2026/cli`
+
+### Required GitHub secret
+
+| Secret | Purpose |
+|--------|---------|
+| `NPM_TOKEN` | npm publish (skip if unset — workflow logs warning) |
+
+### Post-release verification (mandatory)
+
+```bash
+npm install -g @keel2026/cli@0.4.2
+which keel
+keel --version          # must show 0.4.2
+file $(which keel)      # must be node script or symlink to it — NOT ELF
+keel policy --help      # must exist on 0.4+
+```
+
+### CI on every PR (`.github/workflows/ci.yml`)
+
+- `cargo fmt`, `clippy`, `test`, `release build`
+- `./scripts/stage-npm.sh` + `verify-shim.js`
+
+**Cloud is NOT deployed by CI.** Deploy server separately via Render.
+
+---
+
+## 9. Secrets & environment variables
+
+### Keel Cloud (Render dashboard)
+
+| Variable | Required | Example | Purpose |
+|----------|----------|---------|---------|
+| `PORT` | Auto | `10000` | Set by Render |
+| `KEEL_DB_PATH` | Yes | `/data/keel.db` | SQLite path on persistent disk |
+| `RUST_LOG` | No | `info` | Logging |
+| `KEEL_FREE_PROJECT_LIMIT` | No | `1` | Free tier project cap |
+| `KEEL_PRO_PROJECT_LIMIT` | No | `50` | Team tier project cap |
+| `KEEL_STRIPE_PAYMENT_LINK` | For billing | `https://buy.stripe.com/...` | Pricing page CTA |
+| `KEEL_UPGRADE_CODES` | For billing | `code1,code2` | Redeem after Stripe payment |
+| `KEEL_CREATE_SECRET` | Recommended | random string | `POST /api/projects` requires header `X-Keel-Create-Secret` |
+
+In `render.yaml`, billing/create secrets use `sync: false` — you set them manually in Render UI.
+
+### Local CLI
+
+| Variable | Purpose |
+|----------|---------|
+| `KEEL_BIN` | Override binary path in installed hooks |
+
+### Local server dev
+
+Same as Render vars; use `/tmp/keel.db` if no disk.
+
+---
+
+## 10. End-to-end verification checklist
+
+Run this after any rebuild or deploy. Every step should pass.
+
+### CLI
+
+```bash
+keel --version
+keel doctor
+mkdir /tmp/keel-smoke && cd /tmp/keel-smoke
+git init && keel init
+keel goal set "smoke test" --accept "ok"
+test -f .keel/snapshot.md
+test -f .claude/settings.json
+rg "keel hook" .claude/settings.json
+keel check
+```
+
+### Hooks (manual)
+
+```bash
+keel hook session-start --agent claude < /dev/null
+# should print snapshot text
+```
+
+### Server local
+
+```bash
+curl -s localhost:8080/health | jq .
+curl -s -o /dev/null -w "%{http_code}" localhost:8080/pricing   # 200
+```
+
+### Server production
+
+```bash
+curl -s https://keel-cloud.onrender.com/health
+curl -s -o /dev/null -w "%{http_code}" https://keel-cloud.onrender.com/demo.gif
+```
+
+### npm shim (after publish)
+
+```bash
+npm install -g @keel2026/cli@latest
+keel --version
+keel policy verify   # in a repo with policy
+```
+
+### Compaction demo (proof)
+
+```bash
+bash examples/nexus-ping-demo/demo.sh
+# without-keel: no port 7429
+# with-keel: port 7429 after /compact
+```
+
+---
+
+## 11. Cloud HTTP API
+
+Base URL: `https://keel-cloud.onrender.com`
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| GET | `/health` | none | Health check |
+| GET | `/`, `/pricing`, `/trust`, `/start`, … | none | Static HTML |
+| GET | `/demo.gif` | none | Demo asset |
+| POST | `/api/teams` | none | Create team |
+| POST | `/api/projects` | `X-Keel-Create-Secret` if configured | Create project → returns `id`, `api_key` |
+| GET | `/api/projects/{id}` | `Bearer {api_key}` | Get project state |
+| POST | `/api/projects/{id}/sync` | Bearer | Push `state` + `snapshot` |
+| PUT | `/api/projects/{id}/goal` | Bearer | Web goal editor |
+| POST | `/api/teams/projects/link` | team license | Link project to team |
+| GET | `/api/teams/projects` | `?license=` | Fleet list |
+| POST | `/api/billing/upgrade` | body: `team_license`, `code` | Free → Pro |
+
+CLI sync implementation: `src/cloud.rs` (`push_state`, `pull_state`).
+
+---
+
+## 12. SQLite schema
+
+Created in `src/server/db.rs` on first boot:
+
+```sql
+CREATE TABLE teams (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    plan TEXT NOT NULL DEFAULT 'free',      -- 'free' | 'pro'
+    license_key TEXT NOT NULL UNIQUE,
+    max_projects INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE projects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    api_key TEXT NOT NULL UNIQUE,           -- keel_{uuid}
+    team_id TEXT,
+    state_json TEXT NOT NULL DEFAULT '{}',
+    snapshot_md TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL
+);
+```
+
+Limits: `KEEL_FREE_PROJECT_LIMIT` (default 1), `KEEL_PRO_PROJECT_LIMIT` (default 50).
+
+---
+
+## 13. Hook wiring (agent integration)
+
+Installed into `.claude/settings.json` by `keel init`:
+
+| Event | Matcher | Command |
+|-------|---------|---------|
+| PreCompact | all | `keel hook pre-compact --agent claude` |
+| SessionStart | `compact\|resume` | `keel hook session-start --agent claude` |
+| PreToolUse | Bash, Edit, Write, ApplyPatch | `keel hook pre-tool-use --agent claude` |
+| PostToolUse | same | `keel hook post-tool-use --agent claude` |
+| Stop | all | `keel hook stop --agent claude` |
+
+**PreCompact** prints JSON `systemMessage` with full `snapshot.md` — this is how goals survive Claude `/compact`.
+
+**PreToolUse** can return `decision: block` (loop breaker, constraints, signed policy).
+
+**Stop** runs acceptance gate shell command; exit 2 blocks session end (Claude).
+
+Codex: same events in `.codex/hooks.json` — user must `/hooks` trust once.  
+Cursor: `.cursor/hooks.json` — less battle-tested.
+
+---
+
+## 14. Product summary
+
+### What Keel is
+
+Repo-local **task ticket** (goal, acceptance, constraints, progress, failures) + **hook-layer enforcement** across Claude Code, Codex, Cursor.
+
+### What Keel is not
+
+- Replacement for `CLAUDE.md` (house rules stay in your md; `keel init` appends a small Keel section)
+- Replacement for Claude Tasks API or Agentpack
+- Bulletproof vs prompt injection
+
+### vs “good CLAUDE.md + skills + loop”
+
+| | md + skills | Keel |
+|--|-------------|------|
+| Survives `/compact` | Only if your loop re-reads files | PreCompact injects snapshot automatically |
+| Block bad commands | Advisory | PreToolUse deny |
+| Block “done” with failing tests | Advisory | Stop hook |
+| CI signed goal | DIY | `keel policy` + `keel check` |
+
+### Pricing
+
+| Tier | Price |
+|------|-------|
+| Free CLI + 1 cloud project | $0 |
+| Team (fleet, 50 repos) | $15/mo |
+
+---
+
+## 15. Demos & proof assets
+
+### Primary — `examples/nexus-ping-demo/` (fair baseline)
+
+Both arms have `CLAUDE.md` + `.claude/`. Only difference: `keel init` or not.
+
+| Arm | After Claude `/compact` |
+|-----|-------------------------|
+| without-keel | `process.env.PORT` — cannot ship secret **7429** |
+| with-keel | **`PORT = 7429`**, correct JSON |
+
+```bash
+bash examples/nexus-ping-demo/demo.sh
+bash examples/nexus-ping-demo/record.sh   # asciinema + GIF
+```
+
+Artifacts: `demo.gif`, `demo.cast`, `artifacts/results/`, `RESULTS.md`  
+Homepage: `web/demo.gif`
+
+### Legacy — `examples/keel-compact-demo/`
+
+Port 8842 vs 3000; without-keel had no `.claude` (less fair).
+
+### CI example
+
+`examples/github-keel-check.yml` — run `keel check` on PR.
+
+---
+
+## 16. Sales narrative
+
+**Wedge:** *Goal survives Claude `/compact`; CI enforces it.*
+
+**One sentence:** Keel Team is the control plane for AI agents in your repos — see every goal, gate merges with `keel check`, same guardrails in Claude, Codex, and Cursor.
+
+**Buyer:** Eng lead, 3–15 devs, multiple repos, Claude Code or Codex.
+
+**Proof:** Run nexus-ping demo or show `demo.gif`.
+
+**Show HN draft:** `docs/SHOW_HN.md`
+
+---
+
+## 17. Failed approaches (do not retry)
+
+| Approach | Why |
+|----------|-----|
+| Commit ELF as `npm/keel-cli/bin/keel.js` | v0.4.0 shipped wrong version, no `policy` cmd |
+| `claude --bare` in demos | Breaks Claude auth |
+| without-keel with no `.claude` | Unrealistic baseline |
+| Global hooks without per-repo `keel init` | Empty snapshots |
+| `npm test` as acceptance gate before tests pass | Infinite fail |
+| asciinema without `--overwrite` | Re-record aborts |
+| Expect GHA to deploy cloud | Only Render deploys server |
+
+---
+
+## 18. Open decisions
+
+1. Cursor: first-class vs documented manual hooks?
+2. Product telemetry vs privacy-blind?
+3. Windows npm platform package?
+4. Retire greet-api demo in favor of nexus-ping only?
+5. Add “power user md + loop” third demo arm?
+
+---
+
+## 19. Key links
 
 | Resource | URL / path |
 |----------|------------|
+| GitHub | https://github.com/bunyinu/keel |
 | Cloud | https://keel-cloud.onrender.com |
-| Pricing | https://keel-cloud.onrender.com/pricing |
 | npm | `@keel2026/cli` |
-| Compaction demo | `examples/keel-compact-demo/demo.gif` |
-| CI example | `examples/github-keel-check.yml` |
-| Global hooks backup | `~/.claude/settings.json.bak.before-keel-removal-*` (if removed) |
+| Handoff (this file) | `docs/HANDOFF.md` |
+| Deploy blueprint | `render.yaml` |
+| Deploy script | `scripts/deploy-render.sh` |
+| Docker | `Dockerfile` |
+| Release workflow | `.github/workflows/release.yml` |
+| Fair demo | `examples/nexus-ping-demo/` |
+| Show HN | `docs/SHOW_HN.md` |
 
 ---
 
-*Handoff prepared from full repo read, live compaction experiment, and v0.3.1 codebase state.*
+## Quick rebuild order (TL;DR for a new engineer)
+
+1. `cargo test && cargo build --release` — CLI works  
+2. `./scripts/stage-npm.sh && npm install -g ./npm/keel-cli` — npm works  
+3. `cargo run --release --bin keel-server` — cloud works locally  
+4. Push to GitHub → Render Blueprint from `render.yaml` — cloud live  
+5. Set Render secrets (Stripe, upgrade codes, create secret)  
+6. `git tag vX.Y.Z && git push origin vX.Y.Z` — npm published  
+7. `npm install -g @keel2026/cli@X.Y.Z && keel --version` — verify shim  
+8. `bash examples/nexus-ping-demo/demo.sh` — verify product proof  
+
+---
+
+*End of handoff. If something fails, start at §10 verification checklist and trace which artifact (CLI / npm / server) broke.*

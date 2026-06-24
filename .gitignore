@@ -1,5 +1,7 @@
 # Keel
 .keel/*.tmp
+.keel/cloud.json
+.keel/policy.key
 target/
 
 # Staged native binaries (built by scripts/stage-npm.sh)

@@ -12,6 +12,7 @@ pub const PLAN_PRO: &str = "pro";
 pub struct Team {
     pub id: String,
     pub name: String,
+    pub email: Option<String>,
     pub plan: String,
     pub license_key: String,
     pub max_projects: i32,
@@ -26,6 +27,9 @@ pub struct Project {
     pub team_id: String,
     pub state_json: String,
     pub snapshot_md: String,
+    pub config_json: String,
+    pub changelog_jsonl: String,
+    pub policy_json: String,
     pub updated_at: String,
 }
 
@@ -40,6 +44,8 @@ pub struct OwnedProjectSummary {
     pub goal_title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_step: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub policy_label: Option<String>,
     pub compactions: u32,
 }
 
@@ -108,12 +114,39 @@ pub fn init_db(path: &Path) -> Result<()> {
 }
 
 fn migrate_schema(conn: &Connection) -> Result<()> {
-    let mut stmt = conn.prepare("PRAGMA table_info(projects)")?;
+    ensure_column(conn, "projects", "team_id", "team_id TEXT")?;
+    ensure_column(conn, "teams", "email", "email TEXT")?;
+    ensure_column(conn, "projects", "config_json", "config_json TEXT NOT NULL DEFAULT '{}'")?;
+    ensure_column(
+        conn,
+        "projects",
+        "changelog_jsonl",
+        "changelog_jsonl TEXT NOT NULL DEFAULT ''",
+    )?;
+    ensure_column(
+        conn,
+        "projects",
+        "policy_json",
+        "policy_json TEXT NOT NULL DEFAULT '{}'",
+    )?;
+    Ok(())
+}
+
+fn ensure_column(conn: &Connection, table: &str, col: &str, ddl: &str) -> Result<()> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
     let cols: Vec<String> = stmt
-        .query_map([], |row| row.get(1))?
+        .query_map([], |row| row.get::<_, String>(1))?
         .collect::<Result<Vec<_>, _>>()?;
-    if !cols.iter().any(|c| c == "team_id") {
+    if cols.iter().any(|c| c == col) {
+        return Ok(());
+    }
+    if col == "team_id" {
         conn.execute("ALTER TABLE projects ADD COLUMN team_id TEXT", [])?;
+    } else {
+        conn.execute(
+            &format!("ALTER TABLE {table} ADD COLUMN {ddl}"),
+            [],
+        )?;
     }
     Ok(())
 }
@@ -126,7 +159,7 @@ fn migrate_orphan_projects() -> Result<()> {
         .collect::<Result<Vec<_>, _>>()?;
     drop(stmt);
     for (pid, pname) in orphans {
-        let team = create_team_internal(&pname, PLAN_FREE, free_project_limit())?;
+        let team = create_team_internal(&pname, None, PLAN_FREE, free_project_limit())?;
         c.execute(
             "UPDATE projects SET team_id = ?1 WHERE id = ?2",
             params![team.id, pid],
@@ -150,19 +183,26 @@ fn new_team_license() -> String {
     format!("keel_team_{}", Uuid::new_v4().simple())
 }
 
-fn create_team_internal(name: &str, plan: &str, max_projects: i32) -> Result<Team> {
+fn create_team_internal(
+    name: &str,
+    email: Option<&str>,
+    plan: &str,
+    max_projects: i32,
+) -> Result<Team> {
     let id = Uuid::new_v4().to_string();
     let license_key = new_team_license();
     let now = chrono::Utc::now().to_rfc3339();
+    let email = email.map(str::trim).filter(|s| !s.is_empty());
     let c = conn()?;
     c.execute(
-        "INSERT INTO teams (id, name, plan, license_key, max_projects, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![id, name, plan, license_key, max_projects, now],
+        "INSERT INTO teams (id, name, email, plan, license_key, max_projects, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![id, name, email, plan, license_key, max_projects, now],
     )?;
     Ok(Team {
         id,
         name: name.to_string(),
+        email: email.map(|s| s.to_string()),
         plan: plan.to_string(),
         license_key,
         max_projects,
@@ -170,25 +210,70 @@ fn create_team_internal(name: &str, plan: &str, max_projects: i32) -> Result<Tea
     })
 }
 
-pub fn create_team(name: &str) -> Result<Team> {
-    create_team_internal(name, PLAN_FREE, free_project_limit())
+pub fn create_team(name: &str, email: Option<&str>) -> Result<Team> {
+    create_team_internal(name, email, PLAN_FREE, free_project_limit())
+}
+
+pub fn get_team_by_email_and_license(email: &str, license_key: &str) -> Result<Option<Team>> {
+    let email = email.trim();
+    let license_key = license_key.trim();
+    let c = conn()?;
+    let mut stmt = c.prepare(
+        "SELECT id, name, email, plan, license_key, max_projects, created_at
+         FROM teams WHERE lower(email) = lower(?1) AND license_key = ?2",
+    )?;
+    let mut rows = stmt.query(params![email, license_key])?;
+    if let Some(row) = rows.next()? {
+        return Ok(Some(team_from_row(&row)?));
+    }
+    Ok(None)
+}
+
+fn team_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Team> {
+    Ok(Team {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        email: row.get(2)?,
+        plan: row.get(3)?,
+        license_key: row.get(4)?,
+        max_projects: row.get(5)?,
+        created_at: row.get(6)?,
+    })
+}
+
+fn project_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Project> {
+    Ok(Project {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        api_key: row.get(2)?,
+        team_id: row.get(3)?,
+        state_json: row.get(4)?,
+        snapshot_md: row.get(5)?,
+        config_json: row.get(6)?,
+        changelog_jsonl: row.get(7)?,
+        policy_json: row.get(8)?,
+        updated_at: row.get(9)?,
+    })
+}
+
+fn policy_label_from_json(raw: &str) -> Option<String> {
+    serde_json::from_str::<serde_json::Value>(raw)
+        .ok()
+        .and_then(|v| {
+            v.get("label")
+                .and_then(|l| l.as_str())
+                .map(|s| s.to_string())
+        })
 }
 
 pub fn get_team_by_license(license_key: &str) -> Result<Option<Team>> {
     let c = conn()?;
     let mut stmt = c.prepare(
-        "SELECT id, name, plan, license_key, max_projects, created_at FROM teams WHERE license_key = ?1",
+        "SELECT id, name, email, plan, license_key, max_projects, created_at FROM teams WHERE license_key = ?1",
     )?;
     let mut rows = stmt.query(params![license_key])?;
     if let Some(row) = rows.next()? {
-        return Ok(Some(Team {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            plan: row.get(2)?,
-            license_key: row.get(3)?,
-            max_projects: row.get(4)?,
-            created_at: row.get(5)?,
-        }));
+        return Ok(Some(team_from_row(&row)?));
     }
     Ok(None)
 }
@@ -196,18 +281,11 @@ pub fn get_team_by_license(license_key: &str) -> Result<Option<Team>> {
 pub fn get_team_by_id(id: &str) -> Result<Option<Team>> {
     let c = conn()?;
     let mut stmt = c.prepare(
-        "SELECT id, name, plan, license_key, max_projects, created_at FROM teams WHERE id = ?1",
+        "SELECT id, name, email, plan, license_key, max_projects, created_at FROM teams WHERE id = ?1",
     )?;
     let mut rows = stmt.query(params![id])?;
     if let Some(row) = rows.next()? {
-        return Ok(Some(Team {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            plan: row.get(2)?,
-            license_key: row.get(3)?,
-            max_projects: row.get(4)?,
-            created_at: row.get(5)?,
-        }));
+        return Ok(Some(team_from_row(&row)?));
     }
     Ok(None)
 }
@@ -249,7 +327,7 @@ pub fn create_project(name: &str, team_license: Option<&str>) -> Result<Project>
         }
         team
     } else {
-        create_team(name)?
+        create_team(name, None)?
     };
 
     let id = Uuid::new_v4().to_string();
@@ -257,8 +335,8 @@ pub fn create_project(name: &str, team_license: Option<&str>) -> Result<Project>
     let now = chrono::Utc::now().to_rfc3339();
     let c = conn()?;
     c.execute(
-        "INSERT INTO projects (id, name, api_key, team_id, state_json, snapshot_md, updated_at)
-         VALUES (?1, ?2, ?3, ?4, '{}', '', ?5)",
+        "INSERT INTO projects (id, name, api_key, team_id, state_json, snapshot_md, config_json, changelog_jsonl, policy_json, updated_at)
+         VALUES (?1, ?2, ?3, ?4, '{}', '', '{}', '', '{}', ?5)",
         params![id, name, api_key, team.id, now],
     )?;
     Ok(Project {
@@ -268,6 +346,9 @@ pub fn create_project(name: &str, team_license: Option<&str>) -> Result<Project>
         team_id: team.id,
         state_json: "{}".into(),
         snapshot_md: String::new(),
+        config_json: "{}".into(),
+        changelog_jsonl: String::new(),
+        policy_json: "{}".into(),
         updated_at: now,
     })
 }
@@ -280,11 +361,12 @@ pub fn list_team_projects(team_id: &str) -> Result<Vec<ProjectSummary>> {
 pub fn list_team_projects_owned(team_id: &str) -> Result<Vec<OwnedProjectSummary>> {
     let c = conn()?;
     let mut stmt = c.prepare(
-        "SELECT id, name, api_key, updated_at, state_json FROM projects WHERE team_id = ?1 ORDER BY updated_at DESC",
+        "SELECT id, name, api_key, updated_at, state_json, policy_json FROM projects WHERE team_id = ?1 ORDER BY updated_at DESC",
     )?;
     let rows = stmt.query_map(params![team_id], |row| {
         let id: String = row.get(0)?;
         let state_json: String = row.get(4)?;
+        let policy_json: String = row.get(5)?;
         let (goal_title, current_step, compactions) = fleet_fields_from_state(&state_json);
         Ok(OwnedProjectSummary {
             id: id.clone(),
@@ -294,6 +376,7 @@ pub fn list_team_projects_owned(team_id: &str) -> Result<Vec<OwnedProjectSummary
             dashboard_url: format!("/dashboard/{id}"),
             goal_title,
             current_step,
+            policy_label: policy_label_from_json(&policy_json),
             compactions,
         })
     })?;
@@ -384,20 +467,12 @@ pub fn link_project_to_team(project_id: &str, api_key: &str, team_license: &str)
 pub fn get_by_api_key(api_key: &str) -> Result<Option<Project>> {
     let c = conn()?;
     let mut stmt = c.prepare(
-        "SELECT id, name, api_key, team_id, state_json, snapshot_md, updated_at
+        "SELECT id, name, api_key, team_id, state_json, snapshot_md, config_json, changelog_jsonl, policy_json, updated_at
          FROM projects WHERE api_key = ?1",
     )?;
     let mut rows = stmt.query(params![api_key])?;
     if let Some(row) = rows.next()? {
-        return Ok(Some(Project {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            api_key: row.get(2)?,
-            team_id: row.get(3)?,
-            state_json: row.get(4)?,
-            snapshot_md: row.get(5)?,
-            updated_at: row.get(6)?,
-        }));
+        return Ok(Some(project_from_row(&row)?));
     }
     Ok(None)
 }
@@ -405,30 +480,37 @@ pub fn get_by_api_key(api_key: &str) -> Result<Option<Project>> {
 pub fn get_by_id(id: &str) -> Result<Option<Project>> {
     let c = conn()?;
     let mut stmt = c.prepare(
-        "SELECT id, name, api_key, team_id, state_json, snapshot_md, updated_at
+        "SELECT id, name, api_key, team_id, state_json, snapshot_md, config_json, changelog_jsonl, policy_json, updated_at
          FROM projects WHERE id = ?1",
     )?;
     let mut rows = stmt.query(params![id])?;
     if let Some(row) = rows.next()? {
-        return Ok(Some(Project {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            api_key: row.get(2)?,
-            team_id: row.get(3)?,
-            state_json: row.get(4)?,
-            snapshot_md: row.get(5)?,
-            updated_at: row.get(6)?,
-        }));
+        return Ok(Some(project_from_row(&row)?));
     }
     Ok(None)
 }
 
-pub fn sync_project(id: &str, state_json: &str, snapshot_md: &str) -> Result<()> {
+pub fn sync_project(
+    id: &str,
+    state_json: &str,
+    snapshot_md: &str,
+    config_json: &str,
+    changelog_jsonl: &str,
+    policy_json: &str,
+) -> Result<()> {
     let now = chrono::Utc::now().to_rfc3339();
     let c = conn()?;
     let n = c.execute(
-        "UPDATE projects SET state_json = ?1, snapshot_md = ?2, updated_at = ?3 WHERE id = ?4",
-        params![state_json, snapshot_md, now, id],
+        "UPDATE projects SET state_json = ?1, snapshot_md = ?2, config_json = ?3, changelog_jsonl = ?4, policy_json = ?5, updated_at = ?6 WHERE id = ?7",
+        params![
+            state_json,
+            snapshot_md,
+            config_json,
+            changelog_jsonl,
+            policy_json,
+            now,
+            id
+        ],
     )?;
     if n == 0 {
         anyhow::bail!("project not found");
@@ -439,20 +521,10 @@ pub fn sync_project(id: &str, state_json: &str, snapshot_md: &str) -> Result<()>
 pub fn list_projects(limit: usize) -> Result<Vec<Project>> {
     let c = conn()?;
     let mut stmt = c.prepare(
-        "SELECT id, name, api_key, team_id, state_json, snapshot_md, updated_at
+        "SELECT id, name, api_key, team_id, state_json, snapshot_md, config_json, changelog_jsonl, policy_json, updated_at
          FROM projects ORDER BY updated_at DESC LIMIT ?1",
     )?;
-    let rows = stmt.query_map(params![limit as i64], |row| {
-        Ok(Project {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            api_key: row.get(2)?,
-            team_id: row.get(3)?,
-            state_json: row.get(4)?,
-            snapshot_md: row.get(5)?,
-            updated_at: row.get(6)?,
-        })
-    })?;
+    let rows = stmt.query_map(params![limit as i64], |row| project_from_row(row))?;
     let mut out = Vec::new();
     for r in rows {
         out.push(r?);

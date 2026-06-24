@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 
 use self::db::{
     count_team_projects, create_project, create_team, get_by_api_key, get_by_id, get_team_by_id,
-    get_team_by_license, link_project_to_team, list_team_projects_owned, sync_project,
+    get_team_by_email_and_license, get_team_by_license, link_project_to_team, list_team_projects_owned, sync_project,
     upgrade_team_to_pro, valid_upgrade_code, Project, Team,
 };
 
@@ -32,6 +32,14 @@ pub struct AppState {
 #[derive(Deserialize)]
 pub struct CreateTeamRequest {
     name: String,
+    #[serde(default)]
+    email: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct LoginRequest {
+    email: String,
+    account_key: String,
 }
 
 #[derive(Serialize)]
@@ -79,6 +87,8 @@ pub struct UpgradeRequest {
 pub struct TeamView {
     id: String,
     name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    email: Option<String>,
     plan: String,
     license: String,
     max_projects: i32,
@@ -88,6 +98,12 @@ pub struct TeamView {
 pub struct SyncRequest {
     state: Value,
     snapshot: String,
+    #[serde(default)]
+    config: Option<Value>,
+    #[serde(default)]
+    changelog: Option<String>,
+    #[serde(default)]
+    policy: Option<Value>,
 }
 
 fn extract_bearer(headers: &HeaderMap) -> Option<String> {
@@ -143,7 +159,8 @@ async fn create_team_handler(
         )
             .into_response());
     }
-    let team = create_team(name).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let team = create_team(name, body.email.as_deref())
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(CreateTeamResponse {
         id: team.id,
         name: team.name,
@@ -281,10 +298,39 @@ fn team_json(team: &Team) -> TeamView {
     TeamView {
         id: team.id.clone(),
         name: team.name.clone(),
+        email: team.email.clone(),
         plan: team.plan.clone(),
         license: team.license_key.clone(),
         max_projects: team.max_projects,
     }
+}
+
+async fn login_handler(Json(body): Json<LoginRequest>) -> Result<Response, StatusCode> {
+    let email = body.email.trim();
+    let key = body.account_key.trim();
+    if email.is_empty() || key.is_empty() {
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Email and account key are required"})),
+        )
+            .into_response());
+    }
+    let team = get_team_by_email_and_license(email, key).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let Some(team) = team else {
+        return Ok((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Invalid email or account key"})),
+        )
+            .into_response());
+    };
+    Ok(Json(json!({ "team": team_json(&team) })).into_response())
+}
+
+fn parse_changelog(raw: &str) -> Vec<Value> {
+    raw.lines()
+        .filter(|l| !l.trim().is_empty())
+        .filter_map(|l| serde_json::from_str(l).ok())
+        .collect()
 }
 
 async fn pricing_page(axum::extract::State(state): axum::extract::State<AppState>) -> Html<String> {
@@ -303,10 +349,16 @@ async fn get_project(
 ) -> Result<Json<Value>, StatusCode> {
     let project = auth_project(&headers, &id).await?;
     let state: Value = serde_json::from_str(&project.state_json).unwrap_or(json!({}));
+    let config: Value = serde_json::from_str(&project.config_json).unwrap_or(json!({}));
+    let policy: Value = serde_json::from_str(&project.policy_json).unwrap_or(json!({}));
+    let changelog = parse_changelog(&project.changelog_jsonl);
     Ok(Json(json!({
         "id": project.id,
         "name": project.name,
         "state": state,
+        "config": config,
+        "policy": policy,
+        "changelog": changelog,
         "snapshot": project.snapshot_md,
         "updated_at": project.updated_at,
     })))
@@ -319,8 +371,20 @@ async fn sync_handler(
 ) -> Result<StatusCode, StatusCode> {
     let _project = auth_project(&headers, &id).await?;
     let state_json = serde_json::to_string(&body.state).map_err(|_| StatusCode::BAD_REQUEST)?;
-    sync_project(&id, &state_json, &body.snapshot)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let config_json = serde_json::to_string(&body.config.clone().unwrap_or(json!({})))
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    let changelog_jsonl = body.changelog.clone().unwrap_or_default();
+    let policy_json = serde_json::to_string(&body.policy.clone().unwrap_or(json!({})))
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    sync_project(
+        &id,
+        &state_json,
+        &body.snapshot,
+        &config_json,
+        &changelog_jsonl,
+        &policy_json,
+    )
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -347,7 +411,15 @@ async fn update_goal_handler(
     apply_form(&mut state, &form);
     let snapshot = render_from_parts(&state, &KeelConfig::default(), &[]);
     let state_json = serde_json::to_string(&state).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    sync_project(&id, &state_json, &snapshot).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    sync_project(
+        &id,
+        &state_json,
+        &snapshot,
+        "{}",
+        "",
+        "{}",
+    )
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let state_value: Value = serde_json::from_str(&state_json).unwrap_or(json!({}));
     Ok(Json(GoalResponse {
         snapshot,
@@ -422,6 +494,13 @@ fn inject_create_secret(html: &str, secret: Option<&str>) -> String {
     html.replace("__KEEL_CREATE_SECRET__", &secret)
 }
 
+async fn app_js() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "application/javascript; charset=utf-8")],
+        include_str!("../../web/app.js"),
+    )
+}
+
 async fn site_css() -> impl IntoResponse {
     (
         [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
@@ -464,12 +543,14 @@ pub fn router(state: AppState) -> Router {
         .route("/login", get(login_redirect))
         .route("/new", get(new_redirect))
         .route("/site.css", get(site_css))
+        .route("/app.js", get(app_js))
         .route("/demo.gif", get(demo_gif))
         .route("/trust", get(trust_page))
         .route("/pricing", get(pricing_page))
         .route("/team", get(team_redirect))
         .route("/health", get(health))
         .route("/api/teams", post(create_team_handler))
+        .route("/api/auth/login", post(login_handler))
         .route("/api/projects", post(create_project_handler))
         .route("/api/projects/{id}", get(get_project))
         .route("/api/projects/{id}/sync", post(sync_handler))

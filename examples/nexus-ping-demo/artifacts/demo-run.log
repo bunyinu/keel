@@ -1,0 +1,56 @@
+============================================================
+  NEXUS-PING — Keel vs no Keel (forced /compact)
+  Secret port: 7429 (not in README)
+  Keel: keel 0.4.1
+============================================================
+
+>>> Twin repos under /tmp/nexus-ping-demo-4026155
+
+>>> WITHOUT KEEL (plain repo)
+  ✓ no .keel
+  ✓ no agent hooks dir
+
+>>> WITH KEEL
+Keel v0.4.1 initialized in /tmp/nexus-ping-demo-4026155/with-keel/.keel
+Hooks installed for Claude Code, Codex, and Cursor
+Next: keel onboard "your task" --accept "criterion 1"
+     or: keel goal set "..." / keel tui
+Moat: keel policy init  (signed goals — hooks block tampered policy)
+Goal set: Build nexus-ping health API on port 7429 only
+Recorded decision: Port 7429 is fixed — do not switch to 3000 after compact
+
+--- .keel/snapshot.md (injected on compact) ---
+# Keel state snapshot
+
+_Agent-written progress and failures below are **not** cryptographically signed._
+_Trusted goal policy (title, acceptance, constraints): read `.keel/policy.md` and verify with `keel policy verify`._
+
+_Compactions: 0 · Sessions: 0 · Last agent: unknown_
+
+Read this file at session start and after every compaction. Do not repeat failed approaches listed below.
+
+## Goal
+**Build nexus-ping health API on port 7429 only**
+
+### Acceptance
+- server listens ONLY on port 7429
+- GET / returns {"nexus":"online","ping":true}
+
+### Constraints
+- never use port 3000, 8080, or 8000
+
+## Progress
+
+**Current step:** implement server.js
+
+## Recent decisions
+
+
+
+============================================================
+  ARM: without-keel
+  /tmp/nexus-ping-demo-4026155/without-keel
+============================================================
+(claude --bare: no hooks, no CLAUDE.md injection)
+
+--- Phase 1: implement server.js ---

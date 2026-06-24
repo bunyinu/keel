@@ -1,0 +1,137 @@
+============================================================
+  NEXUS-PING — Claude /compact: Keel vs no Keel
+  Secret port: 7429 (not in README)
+  Keel: keel 0.4.1
+============================================================
+
+>>> Twin repos under /tmp/nexus-ping-demo-4071197
+
+>>> WITHOUT KEEL (normal Claude project — no keel init)
+  ✓ no .keel
+  ✓ .claude/settings.json (no Keel hooks)
+  ✓ CLAUDE.md (generic — secret port not documented)
+
+>>> WITH KEEL
+Keel v0.4.1 initialized in /tmp/nexus-ping-demo-4071197/with-keel/.keel
+Hooks installed for Claude Code, Codex, and Cursor
+Next: keel onboard "your task" --accept "criterion 1"
+     or: keel goal set "..." / keel tui
+Moat: keel policy init  (signed goals — hooks block tampered policy)
+Goal set: Build nexus-ping health API on port 7429 only
+Recorded decision: Port 7429 is fixed — do not switch to 3000 after compact
+
+--- .keel/snapshot.md (injected on compact) ---
+# Keel state snapshot
+
+_Agent-written progress and failures below are **not** cryptographically signed._
+_Trusted goal policy (title, acceptance, constraints): read `.keel/policy.md` and verify with `keel policy verify`._
+
+_Compactions: 0 · Sessions: 0 · Last agent: unknown_
+
+Read this file at session start and after every compaction. Do not repeat failed approaches listed below.
+
+## Goal
+**Build nexus-ping health API on port 7429 only**
+
+### Acceptance
+- server listens ONLY on port 7429
+- GET / returns {"nexus":"online","ping":true}
+
+### Constraints
+- never use port 3000, 8080, or 8000
+
+## Progress
+
+**Current step:** implement server.js
+
+## Recent decisions
+
+
+
+============================================================
+  ARM: without-keel
+  /tmp/nexus-ping-demo-4071197/without-keel
+============================================================
+(CLAUDE.md + .claude present, but no keel init → no .keel, no PreCompact hook)
+
+--- Phase 1: implement server.js ---
+session_id=ed0258f3-8550-44ae-93fc-9d8b80dd1364
+--- server.js after phase 1 ---
+6:const PORT = process.env.PORT;
+8:if (!PORT) {
+10:    'PORT is not set. The correct port comes from the external team spec ' +
+11:    '(not in this repo). Set PORT before starting, e.g. PORT=<spec-port> npm start.'
+26:// Only listen when run directly, not when imported by tests.
+28:  server.listen(Number(PORT), () => {
+29:    console.log(`nexus-ping listening on ${PORT}`);
+
+--- Phase 2: Claude Code /compact (forced) ---
+    Same as typing /compact in the Claude agent — claude -p --resume <session>
+  Claude compaction: session_id=ed0258f3… turns=0 (0 = compact ran, not a chat turn)
+  No Keel PreCompact hook (keel init not run) → Claude /compact has no goal reinjection
+
+--- Phase 3: recall WITHOUT reading files first ---
+No fix needed. `server.js` sources the port from `process.env.PORT` and never hardcodes one — consistent with the constraint. There's no wrong port to correct, since none was ever invented. JSON shape (`{"status":"ok"}` on `/health`, `404 {"error":"not found"}` otherwise) is intact.
+
+--- server.js FINAL ---
+6:const PORT = process.env.PORT;
+8:if (!PORT) {
+10:    'PORT is not set. The correct port comes from the external team spec ' +
+11:    '(not in this repo). Set PORT before starting, e.g. PORT=<spec-port> npm start.'
+26:// Only listen when run directly, not when imported by tests.
+28:  server.listen(Number(PORT), () => {
+29:    console.log(`nexus-ping listening on ${PORT}`);
+
+============================================================
+  ARM: with-keel
+  /tmp/nexus-ping-demo-4071197/with-keel
+============================================================
+(keel init → .keel goal + PreCompact hook reinjects snapshot.md on /compact)
+
+--- Phase 1: implement server.js ---
+session_id=e9d72860-f9e5-4ac4-b0ca-a36230803ae6
+--- server.js after phase 1 ---
+3:const PORT = 7429;
+16:  server.listen(PORT, () => {
+17:    console.log(`nexus-ping listening on ${PORT}`);
+
+--- Phase 2: Claude Code /compact (forced) ---
+    Same as typing /compact in the Claude agent — claude -p --resume <session>
+  Claude compaction: session_id=e9d72860… turns=0 (0 = compact ran, not a chat turn)
+  Keel hook audit (.keel/changelog.jsonl):
+    {"agent":"claude","at":"2026-06-23T14:26:11Z","event":"pre_compact","trigger":"manual"}
+    {"agent":"claude","at":"2026-06-23T14:26:48Z","event":"session_start","source":"compact"}
+  Keel compactions counter: 1
+
+--- Phase 3: recall WITHOUT reading files first ---
+`server.js` already uses `PORT = 7429` and returns `{"nexus":"online","ping":true}` on `GET /`. No fix needed.
+
+--- server.js FINAL ---
+3:const PORT = 7429;
+16:  server.listen(PORT, () => {
+17:    console.log(`nexus-ping listening on ${PORT}`);
+
+============================================================
+  VERDICT (secret port 7429)
+============================================================
+
+### without-keel ###
+Recall (first lines):
+No fix needed. `server.js` sources the port from `process.env.PORT` and never hardcodes one — consistent with the constraint. There's no wrong port to correct, since none was ever invented. JSON shape (`{"status":"ok"}` on `/health`, `404 {"error":"not found"}` otherwise) is intact.
+Port 7429 in server.js: NO
+const PORT = process.env.PORT;
+if (!PORT) {
+    'PORT is not set. The correct port comes from the external team spec ' +
+    '(not in this repo). Set PORT before starting, e.g. PORT=<spec-port> npm start.'
+// Only listen when run directly, not when imported by tests.
+  server.listen(Number(PORT), () => {
+    console.log(`nexus-ping listening on ${PORT}`);
+
+### with-keel ###
+Recall (first lines):
+`server.js` already uses `PORT = 7429` and returns `{"nexus":"online","ping":true}` on `GET /`. No fix needed.
+Port 7429 in server.js: YES
+
+Artifacts: /tmp/nexus-ping-demo-4071197/results
+Copied results → /home/lus/compo1/examples/nexus-ping-demo/artifacts/results
+Done.

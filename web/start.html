@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Keel Cloud</title>
+  <title>Keel — Sign in</title>
   <link rel="stylesheet" href="/site.css" />
 </head>
 <body>
@@ -18,67 +18,91 @@
   </header>
 
   <main class="page page-narrow">
-    <h1>Keel Cloud account</h1>
-    <p class="lead">Create an account, then add projects under it. Your account key is how you come back.</p>
+    <h1>Keel Cloud</h1>
+    <p class="lead">Sign in with your email and account key. Create a free account to manage projects and fleet.</p>
 
     <div class="card">
-      <h2 style="margin:0 0 1rem;font-size:1.1rem">Create account</h2>
-      <label for="account-name">Your name or team</label>
-      <input id="account-name" type="text" placeholder="e.g. Ada, Acme eng" autocomplete="name" />
-      <button type="button" class="btn primary" id="create-account" style="margin-top:1rem;width:100%">Create account</button>
-      <p id="create-status" class="muted" style="margin-top:1rem"></p>
+      <h2 class="card-title">Sign in</h2>
+      <label for="login-email">Email</label>
+      <input id="login-email" type="email" placeholder="you@company.com" autocomplete="email" />
+      <label for="login-key">Account key</label>
+      <input id="login-key" type="password" placeholder="keel_team_…" autocomplete="off" />
+      <button type="button" class="btn primary" id="login-btn" style="margin-top:1rem;width:100%">Sign in</button>
+      <p id="login-status" class="muted" style="margin-top:1rem"></p>
     </div>
 
     <div class="card" style="margin-top:1.5rem">
-      <h2 style="margin:0 0 1rem;font-size:1.1rem">Already have an account?</h2>
-      <label for="account-key">Account key</label>
-      <input id="account-key" type="password" placeholder="keel_team_…" autocomplete="off" />
-      <button type="button" class="btn secondary" id="open-account" style="margin-top:1rem;width:100%">Open my account</button>
-      <p id="open-status" class="muted" style="margin-top:1rem"></p>
+      <h2 class="card-title">Create account</h2>
+      <label for="account-name">Name or team</label>
+      <input id="account-name" type="text" placeholder="e.g. Ada, Acme eng" autocomplete="name" />
+      <label for="account-email">Email</label>
+      <input id="account-email" type="email" placeholder="you@company.com" autocomplete="email" />
+      <button type="button" class="btn secondary" id="create-account" style="margin-top:1rem;width:100%">Create free account</button>
+      <p id="create-status" class="muted" style="margin-top:1rem"></p>
     </div>
+
+    <p class="muted small" style="margin-top:2rem">Project access? Use the link from your dashboard URL — you'll paste your project key after sign-in.</p>
   </main>
 
+  <script src="/app.js"></script>
   <script>
     window.KEEL_CREATE_SECRET = "__KEEL_CREATE_SECRET__";
     const createSecret = window.KEEL_CREATE_SECRET || "";
+    const params = new URLSearchParams(location.search);
+    const linkProject = params.get("link");
 
-    const saved = localStorage.getItem("keel_account");
-    if (saved) {
-      try {
-        if (JSON.parse(saved).license) location.replace("/account");
-      } catch (_) {}
+    const saved = KeelUI.getAccount();
+    if (saved && saved.license && !linkProject) {
+      location.replace("/account");
     }
 
-    function saveAccount(team) {
-      localStorage.setItem("keel_account", JSON.stringify({
-        id: team.id,
-        name: team.name,
-        license: team.license || team.account_key,
-        plan: team.plan,
-      }));
-    }
-
-    async function verifyAccountKey(key) {
-      const res = await fetch("/api/teams/projects", {
-        headers: { Authorization: "Bearer " + key },
+    document.getElementById("login-btn").onclick = async () => {
+      const email = document.getElementById("login-email").value.trim();
+      const account_key = document.getElementById("login-key").value.trim();
+      const st = document.getElementById("login-status");
+      st.className = "muted";
+      if (!email || !account_key) {
+        st.textContent = "Email and account key required";
+        st.className = "err";
+        return;
+      }
+      st.textContent = "Signing in…";
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, account_key }),
       });
-      if (!res.ok) return null;
-      const data = await res.json();
-      return data.team;
-    }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        st.textContent = data.error || "Sign in failed";
+        st.className = "err";
+        return;
+      }
+      KeelUI.saveAccount(data.team);
+      if (linkProject) {
+        location.href = "/account?link=" + encodeURIComponent(linkProject);
+      } else {
+        location.href = "/account";
+      }
+    };
 
     document.getElementById("create-account").onclick = async () => {
       const name = document.getElementById("account-name").value.trim();
+      const email = document.getElementById("account-email").value.trim();
       const st = document.getElementById("create-status");
       st.className = "muted";
-      if (!name) { st.textContent = "Enter a name for your account"; st.className = "err"; return; }
+      if (!name || !email) {
+        st.textContent = "Name and email required";
+        st.className = "err";
+        return;
+      }
       const headers = { "Content-Type": "application/json" };
       if (createSecret) headers["X-Keel-Create-Secret"] = createSecret;
       st.textContent = "Creating…";
       const res = await fetch("/api/teams", {
         method: "POST",
         headers,
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, email }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -87,24 +111,16 @@
         return;
       }
       sessionStorage.setItem("keel_show_account_key", data.account_key);
-      saveAccount({ id: data.id, name: data.name, license: data.account_key, plan: data.plan });
-      location.href = "/account";
-    };
-
-    document.getElementById("open-account").onclick = async () => {
-      const key = document.getElementById("account-key").value.trim();
-      const st = document.getElementById("open-status");
-      st.className = "muted";
-      if (!key) { st.textContent = "Enter your account key"; st.className = "err"; return; }
-      st.textContent = "Opening…";
-      const team = await verifyAccountKey(key);
-      if (!team) {
-        st.textContent = "Invalid account key";
-        st.className = "err";
-        return;
-      }
-      saveAccount(team);
-      location.href = "/account";
+      KeelUI.saveAccount({
+        id: data.id,
+        name: data.name,
+        email,
+        license: data.account_key,
+        plan: data.plan,
+      });
+      location.href = linkProject
+        ? "/account?link=" + encodeURIComponent(linkProject)
+        : "/account";
     };
   </script>
 </body>

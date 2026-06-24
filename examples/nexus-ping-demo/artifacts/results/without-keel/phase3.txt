@@ -1,0 +1,1 @@
+No fix needed. `server.js` sources the port from `process.env.PORT` and never hardcodes one — consistent with the constraint. There's no wrong port to correct, since none was ever invented. JSON shape (`{"status":"ok"}` on `/health`, `404 {"error":"not found"}` otherwise) is intact.
