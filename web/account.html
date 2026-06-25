@@ -27,7 +27,7 @@
     </div>
   </div>
 
-  <main class="page page-wide">
+  <main class="page page-wide" id="account-app" style="display:none">
     <div class="page-header">
       <span class="eyebrow">Fleet</span>
       <h1 id="account-title">Your account</h1>
@@ -61,6 +61,10 @@
     </section>
   </main>
 
+  <main class="page page-narrow" id="account-loading">
+    <p class="muted">Checking your session…</p>
+  </main>
+
   <script src="/app.js"></script>
   <script>
     window.KEEL_CREATE_SECRET = "__KEEL_CREATE_SECRET__";
@@ -87,40 +91,35 @@
     async function loadProjects() {
       const a = requireAccount();
       if (!a) return;
-      document.getElementById("account-title").textContent = a.name;
-      document.getElementById("account-meta").textContent =
-        `${a.plan || "free"} plan · account key …${(a.license || "").slice(-6)}`;
-      if (a.email) {
-        document.getElementById("account-email").textContent = a.email;
-      }
 
       const res = await fetch("/api/teams/projects", {
         headers: { Authorization: "Bearer " + a.license },
       });
       const data = await res.json().catch(() => ({}));
+
+      if (res.status === 401) {
+        localStorage.removeItem("keel_account");
+        location.replace("/start?expired=1");
+        return;
+      }
+
+      document.getElementById("account-loading").style.display = "none";
+      document.getElementById("account-app").style.display = "block";
+
       const box = document.getElementById("projects");
       if (!res.ok) {
-        if (res.status === 401) {
-          box.innerHTML = `<p class="err">${escapeHtml(data.error || "Account key not recognized")}</p>
-            <p class="muted">Your browser saved an account key the server does not know — common after a deploy reset or if you created the account elsewhere.</p>
-            <p><a href="/start">Sign in again</a> · <a href="#" id="clear-account">Clear saved session</a></p>`;
-          document.getElementById("clear-account").onclick = (e) => {
-            e.preventDefault();
-            localStorage.removeItem("keel_account");
-            location.href = "/start";
-          };
-          return;
-        }
         box.innerHTML = `<p class="err">${escapeHtml(data.error || "Could not load projects")}</p>`;
         return;
       }
-      if (a.name !== data.team.name || data.team.email) {
-        a.name = data.team.name;
-        if (data.team.email) a.email = data.team.email;
-        localStorage.setItem("keel_account", JSON.stringify(a));
-        document.getElementById("account-title").textContent = a.name;
-        if (a.email) document.getElementById("account-email").textContent = a.email;
+
+      document.getElementById("account-title").textContent = data.team.name;
+      document.getElementById("account-meta").textContent =
+        `${data.team.plan || "free"} plan · account key …${(a.license || "").slice(-6)}`;
+      if (data.team.email) {
+        document.getElementById("account-email").textContent = data.team.email;
       }
+      KeelUI.saveAccount(data.team);
+
       for (const p of data.projects) storeProjectKey(p.id, p.api_key, p.name);
       if (!data.projects.length) {
         box.innerHTML = "<p class=\"muted\">No projects yet. Create one above or add an existing project.</p>";

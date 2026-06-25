@@ -60,6 +60,12 @@
       location.replace("/account");
     }
 
+    if (params.get("expired") === "1") {
+      const st = document.getElementById("login-status");
+      st.textContent = "Your saved session expired. Sign in again or create a new account.";
+      st.className = "warn";
+    }
+
     document.getElementById("login-btn").onclick = async () => {
       const email = document.getElementById("login-email").value.trim();
       const account_key = document.getElementById("login-key").value.trim();
