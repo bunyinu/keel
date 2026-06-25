@@ -353,14 +353,14 @@ fn parse_changelog(raw: &str) -> Vec<Value> {
         .collect()
 }
 
-async fn pricing_page(axum::extract::State(state): axum::extract::State<AppState>) -> Html<String> {
+async fn pricing_page(axum::extract::State(state): axum::extract::State<AppState>) -> Response {
     let mut html = include_str!("../../web/pricing.html").to_string();
     let link = html_escape(&state.stripe_payment_link);
     html = html.replace(
         "window.KEEL_STRIPE_PAYMENT_LINK || stripeDefault",
         &format!("\"{link}\" || stripeDefault"),
     );
-    Html(html)
+    html_no_cache(html)
 }
 
 async fn get_project(
@@ -448,29 +448,29 @@ async fn update_goal_handler(
     .into_response())
 }
 
-async fn dashboard_edit(Path(id): Path<String>) -> Result<Html<String>, StatusCode> {
+async fn dashboard_edit(Path(id): Path<String>) -> Result<Response, StatusCode> {
     dashboard_page(include_str!("../../web/dashboard-edit.html"), &id)
 }
 
-async fn dashboard(Path(id): Path<String>) -> Result<Html<String>, StatusCode> {
+async fn dashboard(Path(id): Path<String>) -> Result<Response, StatusCode> {
     dashboard_page(include_str!("../../web/dashboard.html"), &id)
 }
 
-fn dashboard_page(template: &str, id: &str) -> Result<Html<String>, StatusCode> {
+fn dashboard_page(template: &str, id: &str) -> Result<Response, StatusCode> {
     if get_by_id(id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?.is_none() {
         return Err(StatusCode::NOT_FOUND);
     }
-    Ok(Html(
+    Ok(html_no_cache(
         template.replace("__PROJECT_ID__", &html_escape(id)),
     ))
 }
 
-async fn home() -> Html<&'static str> {
-    Html(include_str!("../../web/index.html"))
+async fn home() -> Response {
+    html_static_no_cache(include_str!("../../web/index.html"))
 }
 
-async fn account_page(axum::extract::State(state): axum::extract::State<AppState>) -> Html<String> {
-    Html(inject_create_secret(
+async fn account_page(axum::extract::State(state): axum::extract::State<AppState>) -> Response {
+    html_no_cache(inject_create_secret(
         include_str!("../../web/account.html"),
         state.create_secret.as_deref(),
     ))
@@ -480,8 +480,8 @@ async fn team_redirect() -> Response {
     (StatusCode::SEE_OTHER, [(header::LOCATION, "/account")]).into_response()
 }
 
-async fn start_page(axum::extract::State(state): axum::extract::State<AppState>) -> Html<String> {
-    Html(inject_create_secret(
+async fn start_page(axum::extract::State(state): axum::extract::State<AppState>) -> Response {
+    html_no_cache(inject_create_secret(
         include_str!("../../web/start.html"),
         state.create_secret.as_deref(),
     ))
@@ -514,6 +514,28 @@ fn inject_create_secret(html: &str, secret: Option<&str>) -> String {
     html.replace("__KEEL_CREATE_SECRET__", &secret)
 }
 
+fn html_no_cache(body: String) -> Response {
+    (
+        [
+            (header::CACHE_CONTROL, "no-cache, no-store, must-revalidate"),
+            (header::PRAGMA, "no-cache"),
+        ],
+        Html(body),
+    )
+        .into_response()
+}
+
+fn html_static_no_cache(body: &'static str) -> Response {
+    (
+        [
+            (header::CACHE_CONTROL, "no-cache, no-store, must-revalidate"),
+            (header::PRAGMA, "no-cache"),
+        ],
+        Html(body),
+    )
+        .into_response()
+}
+
 async fn app_js() -> impl IntoResponse {
     (
         [(header::CONTENT_TYPE, "application/javascript; charset=utf-8")],
@@ -528,8 +550,8 @@ async fn site_css() -> impl IntoResponse {
     )
 }
 
-async fn trust_page() -> Html<&'static str> {
-    Html(include_str!("../../web/trust.html"))
+async fn trust_page() -> Response {
+    html_static_no_cache(include_str!("../../web/trust.html"))
 }
 
 async fn demo_gif() -> impl IntoResponse {
