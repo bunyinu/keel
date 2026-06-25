@@ -545,7 +545,10 @@ async fn app_js() -> impl IntoResponse {
 
 async fn site_css() -> impl IntoResponse {
     (
-        [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
+        [
+            (header::CONTENT_TYPE, "text/css; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-cache, no-store, must-revalidate"),
+        ],
         include_str!("../../web/site.css"),
     )
 }
