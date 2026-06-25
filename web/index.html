@@ -4,11 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Keel — Agent state that survives compaction</title>
-  <link rel="stylesheet" href="/site.css?v=20260624" />
+  <link rel="stylesheet" href="/site.css?v=20260625" />
 </head>
 <body>
   <header class="site-header">
-    <a class="logo" href="/"><span class="logo-mark">K</span> Keel</a>
+    <a class="logo" href="/">Keel</a>
     <nav>
       <a href="/" class="active">Home</a>
       <a href="/start">Account</a>
@@ -20,15 +20,13 @@
 
   <main class="page">
     <section class="hero">
-      <span class="eyebrow">Repo-local · Hook-enforced</span>
-      <h1>Agent state that <em>survives compaction</em></h1>
-      <p class="lead">Keel keeps your goal, acceptance criteria, and progress in <code>.keel/</code> inside your repo — restored automatically when Claude Code, Codex, or Cursor compacts the session.</p>
+      <h1>Agent state that survives compaction</h1>
+      <p class="lead">Your goal, acceptance criteria, and progress live in <code>.keel/</code> inside the repo. Hooks reinject them when Claude Code, Codex, or Cursor compacts the session.</p>
       <div class="cta-row">
-        <a class="btn primary" href="/start">Create free account</a>
+        <a class="btn primary" href="/start">Create account</a>
         <a class="btn secondary" href="/pricing">Team pricing</a>
       </div>
       <div class="install-hint">
-        <span>$</span>
         <code>npm install -g @keel2026/cli</code>
       </div>
     </section>
@@ -37,39 +35,24 @@
       <div class="demo-frame">
         <img src="/demo.gif" alt="Compaction demo: with Keel the goal survives, without Keel the agent guesses" width="960" height="540" loading="lazy" />
       </div>
-      <figcaption>Same task, forced <code>/compact</code> — with Keel the repo goal survives; without it the agent guesses.</figcaption>
+      <figcaption>Same task, forced <code>/compact</code>. With Keel the port stays 7429. Without it the agent guesses.</figcaption>
     </figure>
-
-    <div class="feature-grid">
-      <div class="feature-card">
-        <h3>Survives /compact</h3>
-        <p>Goal and acceptance reinjected via PreCompact hooks — not another markdown file the agent might ignore.</p>
-      </div>
-      <div class="feature-card">
-        <h3>Enforced in hooks</h3>
-        <p>Block bad tool use, loop breakers, and stop gates until acceptance passes.</p>
-      </div>
-      <div class="feature-card">
-        <h3>Team fleet view</h3>
-        <p>See every repo's goal, step, and last sync. CI-ready with <code>keel check</code>.</p>
-      </div>
-    </div>
 
     <section class="steps">
       <h2>How it works</h2>
       <ol>
-        <li><a href="/start">Create an account</a>, then add projects from your dashboard.</li>
-        <li>Install CLI: <code>npm install -g @keel2026/cli</code></li>
-        <li>In your repo: <code>keel onboard "your task" --accept "tests pass"</code></li>
+        <li><a href="/start">Create an account</a>, add a project from the dashboard.</li>
+        <li><code>npm install -g @keel2026/cli</code></li>
+        <li><code>keel onboard "your task" --accept "tests pass"</code></li>
         <li>Optional: <code>keel cloud link</code> to sync across machines.</li>
-        <li>Use your agent — state survives compaction.</li>
+        <li>Run your agent. State survives compaction.</li>
       </ol>
     </section>
   </main>
 
   <footer class="site-footer">
     <div class="inner">
-      <span class="brand">Keel — agent state in your repo</span>
+      <span>Keel</span>
       <nav>
         <a href="/pricing">Pricing</a>
         <a href="/trust">Trust</a>
